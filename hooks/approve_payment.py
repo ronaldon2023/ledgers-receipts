@@ -169,7 +169,7 @@ def decide(event: Any) -> str | None:
     threshold = threshold_cents()
     is_int = isinstance(amount, int) and not isinstance(amount, bool)
     paid = paid_on_bill(str(tool_input["bill_id"])) if "bill_id" in tool_input else 0
-    if is_int and threshold is not None and amount + paid <= threshold:
+    if is_int and amount > 0 and threshold is not None and amount + max(paid, 0) <= threshold:
         return None
     return reason(tool_input, threshold, paid)
 

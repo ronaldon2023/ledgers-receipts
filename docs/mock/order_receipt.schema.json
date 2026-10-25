@@ -2,20 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "order_receipt.schema.json",
   "title": "Order receipt (draft v0)",
-  "description": "One receipt per order, created at order start and revised at each lifecycle stage. Money is integer cents; every value is already masked. Order field names follow schema.org Order where one exists; invoice_number, received_at, from and the payment_status values are our own.",
+  "description": "One receipt per order, written once when the order stops: payment sent, or stopped and waiting on the owner. A later attempt gets a new receipt that names this one in supersedes. Replaces PLAN.md contract 4 for order receipts. Money is integer cents; every value is already masked. Ids and addresses come from bakery.db (contract 1). Order field names follow schema.org Order where one fits.",
   "type": "object",
-  "required": ["receipt_type", "receipt_id", "revision", "state", "generated_at", "business", "verdict",
-               "order", "lifecycle", "checks", "chain"],
+  "required": ["receipt_type", "receipt_id", "generated_at", "business", "verdict", "order", "bill", "payment",
+               "lifecycle", "checks", "summary_check", "read", "left_business", "pii", "sessions", "evidence"],
   "additionalProperties": false,
   "properties": {
     "$schema": {"type": "string"},
     "receipt_type": {"const": "order-receipt/v0"},
     "receipt_id": {"type": "string"},
-    "revision": {"type": "integer", "minimum": 1, "description": "Bumped each time a stage updates the receipt"},
-    "state": {"enum": ["open", "final"]},
-    "generated_at": {"type": "string", "format": "date-time"},
+    "supersedes": {"type": ["string", "null"], "description": "receipt_id of an earlier receipt for the same order"},
+    "generated_at": {"$ref": "#/$defs/datetime"},
     "business": {"$ref": "#/$defs/party"},
-    "verdict": {"enum": ["IN_PROGRESS", "VERIFIED", "ISSUES_FOUND", "UNTRUSTED"]},
+    "verdict": {"enum": ["VERIFIED", "ISSUES_FOUND", "UNTRUSTED"]},
     "verdict_reason": {"type": "string"},
     "owner_action": {
       "type": "object",
@@ -25,16 +24,12 @@
     },
     "order": {
       "type": "object",
-      "required": ["order_number", "order_date", "order_status", "seller", "items", "currency", "total_cents"],
+      "required": ["order_number", "order_date", "seller", "items", "currency", "total_cents"],
       "additionalProperties": false,
       "properties": {
         "order_number": {"type": "string"},
-        "order_date": {"type": "string", "format": "date-time"},
-        "order_status": {
-          "description": "schema.org OrderStatus members, snake_cased, plus draft and paid",
-          "enum": ["draft", "processing", "in_transit", "delivered", "payment_due", "paid", "problem", "cancelled", "returned"]
-        },
-        "seller": {"$ref": "#/$defs/party"},
+        "order_date": {"$ref": "#/$defs/datetime"},
+        "seller": {"$ref": "#/$defs/party", "description": "A vendors row"},
         "customer": {"$ref": "#/$defs/party"},
         "items": {
           "type": "array",
@@ -58,32 +53,38 @@
         "total_cents": {"$ref": "#/$defs/cents"}
       }
     },
-    "invoice": {
+    "bill": {
       "type": ["object", "null"],
-      "required": ["invoice_number", "references_order", "total_payment_due_cents", "payment_status"],
+      "description": "The supplier's bill: a bills row. Not the invoices table, which holds what customers owe.",
+      "required": ["bill_id", "vendor_id", "references_order", "amount_cents", "due_date"],
       "additionalProperties": false,
       "properties": {
-        "invoice_number": {"type": "string"},
+        "bill_id": {"type": "string"},
+        "vendor_id": {"type": "string"},
+        "vendor_invoice_number": {"type": "string", "description": "The supplier's own number, when it differs from bill_id"},
         "references_order": {"type": "string"},
-        "received_at": {"type": "string", "format": "date-time"},
+        "received_at": {"$ref": "#/$defs/datetime"},
         "from": {"type": "string"},
-        "total_payment_due_cents": {"$ref": "#/$defs/cents"},
-        "payment_due_date": {"type": "string", "format": "date"},
-        "payment_status": {"enum": ["payment_due", "payment_awaiting_approval", "payment_blocked", "payment_complete"]}
+        "amount_cents": {"$ref": "#/$defs/cents"},
+        "due_date": {"type": "string", "format": "date"}
       }
     },
     "payment": {
-      "type": ["object", "null"],
-      "required": ["status", "amount_cents"],
+      "type": "object",
+      "description": "status is the one source of payment state; the UI derives order and bill status from it",
+      "required": ["status", "amount_cents", "payment_id"],
       "additionalProperties": false,
       "properties": {
-        "payment_id": {"type": ["string", "null"]},
-        "status": {"enum": ["not_started", "awaiting_approval", "blocked", "sent", "failed"]},
+        "payment_id": {"type": ["string", "null"], "description": "A payments row id; set only when status is sent"},
+        "status": {"enum": ["not_started", "blocked", "sent", "failed"]},
         "amount_cents": {"$ref": "#/$defs/cents"},
         "requested_to_account": {"$ref": "#/$defs/masked"},
         "account_on_file": {"$ref": "#/$defs/masked"},
         "method": {"type": "string"}
-      }
+      },
+      "if": {"properties": {"status": {"const": "sent"}}},
+      "then": {"properties": {"payment_id": {"type": "string"}}},
+      "else": {"properties": {"payment_id": {"type": "null"}}}
     },
     "authorization": {
       "type": "object",
@@ -94,13 +95,14 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["step", "by", "method", "at"],
+            "required": ["step", "by", "method", "at", "evidence"],
             "additionalProperties": false,
             "properties": {
               "step": {"$ref": "#/$defs/stage"},
               "by": {"$ref": "#/$defs/actor"},
-              "method": {"enum": ["passkey", "hash", "click"]},
-              "at": {"type": "string", "format": "date-time"}
+              "method": {"enum": ["passkey"], "description": "Whiteboard plan; no component records approvals yet"},
+              "at": {"$ref": "#/$defs/datetime"},
+              "evidence": {"$ref": "#/$defs/refs"}
             }
           }
         }
@@ -108,20 +110,16 @@
     },
     "policies": {
       "type": "array",
+      "description": "Definitions only. Results live in checks.",
       "items": {
         "type": "object",
-        "required": ["id", "kind", "title", "result"],
+        "required": ["id", "kind", "title"],
         "additionalProperties": false,
         "properties": {
           "id": {"type": "string"},
           "kind": {"enum": ["order", "payment", "budget"]},
           "title": {"type": "string"},
-          "result": {"enum": ["pass", "fail", "approval_required", "not_checked"]},
-          "detail": {"type": "string"},
-          "limit_cents": {"$ref": "#/$defs/cents"},
-          "used_cents": {"$ref": "#/$defs/cents"},
-          "balance_cents": {"$ref": "#/$defs/cents"},
-          "after_cents": {"$ref": "#/$defs/cents"}
+          "limit_cents": {"$ref": "#/$defs/cents"}
         }
       }
     },
@@ -129,15 +127,21 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["stage", "at", "actor", "status", "checks"],
+        "required": ["stage", "at", "actor", "status", "source", "checks"],
         "additionalProperties": false,
         "properties": {
           "stage": {"$ref": "#/$defs/stage"},
-          "at": {"type": ["string", "null"], "format": "date-time"},
+          "at": {"oneOf": [{"$ref": "#/$defs/datetime"}, {"type": "null"}]},
           "actor": {"enum": ["agent", "human", "supplier", "trigger"]},
-          "status": {"enum": ["not_started", "waiting", "done", "blocked", "failed"]},
+          "status": {"enum": ["done", "blocked", "failed", "not_reached"]},
+          "source": {
+            "enum": ["log", "unverified"],
+            "description": "unverified: nothing in our logs shows this stage, so the UI marks it unverified"
+          },
           "checks": {"type": "array", "items": {"type": "string"}, "description": "ids from checks[]"}
-        }
+        },
+        "if": {"properties": {"source": {"const": "log"}, "status": {"enum": ["done", "blocked", "failed"]}}},
+        "then": {"properties": {"at": {"type": "string"}, "checks": {"minItems": 1}}}
       }
     },
     "checks": {
@@ -149,7 +153,7 @@
         "properties": {
           "id": {"type": "string"},
           "status": {
-            "description": "PLAN.md contract 4 statuses, plus flagged and needs_approval (new, need team agreement)",
+            "description": "PLAN.md contract 4 statuses, plus flagged and needs_approval",
             "enum": ["verified", "blocked", "flagged", "needs_approval", "phantom", "false_claim",
                      "silent_action", "not_done", "unknown_recipient"]
           },
@@ -161,15 +165,54 @@
           "guard": {"enum": ["email_spoofing", "policy", "security"]},
           "policy_id": {"type": "string"},
           "title": {"type": "string"},
-          "evidence": {"type": "array", "items": {"type": "string"}, "description": "keys into evidence{}"},
+          "measured": {
+            "type": "object",
+            "description": "Figures a budget check compared; projected means the payment has not happened",
+            "required": ["as_of", "projected"],
+            "additionalProperties": false,
+            "properties": {
+              "as_of": {"$ref": "#/$defs/datetime"},
+              "projected": {"type": "boolean"},
+              "limit_cents": {"$ref": "#/$defs/cents"},
+              "used_cents": {"$ref": "#/$defs/cents"},
+              "balance_cents": {"$ref": "#/$defs/cents"},
+              "after_cents": {"$ref": "#/$defs/cents"}
+            }
+          },
+          "evidence": {"$ref": "#/$defs/refs"},
           "caused_by": {
             "type": "object",
             "required": ["ref", "quote"],
             "additionalProperties": false,
-            "properties": {"ref": {"type": "string"}, "quote": {"type": "string"}}
+            "properties": {"ref": {"$ref": "#/$defs/ref"}, "quote": {"type": "string"}}
           },
           "quote": {"type": "string", "description": "exact text from Claude's summary"}
         }
+      }
+    },
+    "summary_check": {
+      "type": "object",
+      "description": "Whether Claude's summary was checked. A failed claim extractor shows here, never as a clean receipt.",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {"status": {"enum": ["checked", "not_checked", "error"]}, "error": {"type": "string"}}
+    },
+    "read": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "count"],
+        "additionalProperties": false,
+        "properties": {"source": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "left_business": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action", "to", "summary"],
+        "additionalProperties": false,
+        "properties": {"action": {"type": "string"}, "to": {"type": "string"}, "summary": {"type": "string"}}
       }
     },
     "pii": {
@@ -180,32 +223,69 @@
         "additionalProperties": false,
         "properties": {
           "entity": {"type": "string", "description": "Presidio entity type"},
-          "where": {"type": "string"},
+          "where": {"$ref": "#/$defs/ref"},
           "action": {"enum": ["masked", "blocked"]}
         }
       }
     },
-    "chain": {
-      "type": "object",
-      "required": ["ok", "entries", "head"],
-      "additionalProperties": false,
-      "properties": {
-        "ok": {"type": "boolean"},
-        "algorithm": {"const": "sha256"},
-        "entries": {"type": "integer", "minimum": 0},
-        "head": {"type": "string"}
+    "sessions": {
+      "type": "array",
+      "description": "One hash chain per Claude session that worked on the order",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["session", "ok", "entries", "head"],
+        "additionalProperties": false,
+        "properties": {
+          "session": {"type": "string", "pattern": "^s[0-9]+$"},
+          "started_at": {"$ref": "#/$defs/datetime"},
+          "ok": {"type": "boolean"},
+          "entries": {"type": "integer", "minimum": 0},
+          "head": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
       }
     },
     "evidence": {
       "type": "object",
-      "description": "Masked one-line excerpts keyed by ref (log:N, inbox:N, summary)",
+      "description": "Masked one-line excerpts keyed by ref",
+      "propertyNames": {"$ref": "#/$defs/ref"},
       "additionalProperties": {"type": "string"}
     }
   },
+  "allOf": [
+    {
+      "description": "Any broken chain makes the whole receipt untrusted",
+      "if": {"properties": {"sessions": {"contains": {"properties": {"ok": {"const": false}}}}}},
+      "then": {"properties": {"verdict": {"const": "UNTRUSTED"}}}
+    },
+    {
+      "description": "UNTRUSTED only when a chain is broken",
+      "if": {"properties": {"verdict": {"const": "UNTRUSTED"}}},
+      "then": {"properties": {"sessions": {"contains": {"properties": {"ok": {"const": false}}}}}}
+    },
+    {
+      "description": "VERIFIED needs every check verified and the summary checked",
+      "if": {"properties": {"verdict": {"const": "VERIFIED"}}},
+      "then": {
+        "properties": {
+          "checks": {"items": {"properties": {"status": {"const": "verified"}}}},
+          "summary_check": {"properties": {"status": {"const": "checked"}}}
+        }
+      }
+    },
+    {
+      "description": "ISSUES_FOUND needs at least one check that is not verified",
+      "if": {"properties": {"verdict": {"const": "ISSUES_FOUND"}}},
+      "then": {"properties": {"checks": {"contains": {"properties": {"status": {"not": {"const": "verified"}}}}}}}
+    }
+  ],
   "$defs": {
     "cents": {"type": "integer", "minimum": 0},
+    "datetime": {"type": "string", "format": "date-time"},
     "masked": {"type": "string", "pattern": "^\\*+[0-9]{4}$"},
-    "stage": {"enum": ["order_placed", "order_sent", "fulfilled", "invoice_received", "payment_ready", "payment_sent"]},
+    "ref": {"type": "string", "pattern": "^(s[0-9]+:log:[0-9]+|inbox:[0-9]+|summary)$"},
+    "refs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ref"}},
+    "stage": {"enum": ["order_placed", "order_sent", "fulfilled", "bill_received", "payment_ready", "payment_sent"]},
     "party": {
       "type": "object",
       "required": ["id", "name"],

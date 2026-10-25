@@ -6,9 +6,9 @@ description: Set up Receipts for a small business. Asks the owner which bookkeep
 # Receipts onboarding
 
 Ask the owner a few questions and save the answers to `receipts-onboarding.json` in the project
-folder. Today only the approval amount is used: bakery bill payments over it ask for the owner's
-yes. Payments made through other tools aren't checked yet. The rest is a record for later, while the team decides where payment rules finally live. Say that to
-the owner in one sentence before you start, so they know why you're asking.
+folder. Before you start, tell the owner in one sentence why you're asking: today only the
+approval amount is used, so bakery bill payments over it ask for their yes, and the rest is saved
+for later. Payments through PayPal, Square or Stripe aren't checked.
 
 ## Before you ask
 
@@ -32,7 +32,7 @@ recommendation.
 | Bookkeeping | Which bookkeeping software do you use? | QuickBooks · Xero · Zoho Books · None, I use a spreadsheet |
 | Payments | How do you pay suppliers or take payments? | PayPal · Square · Stripe · Bank transfer only |
 | Email | Where do supplier invoices arrive? | Gmail · Microsoft 365 (Outlook) |
-| Approval | Payments above what amount should need your written approval? | $500 (Recommended) · $1,000 · $2,500 |
+| Approval | Bakery bill payments above what amount should wait for your yes? | $500 (Recommended) · $1,000 · $2,500 |
 
 These cover the demo flow: an order, the supplier's invoice by email, and the payment. Don't walk
 through every tool the Small Business plugin supports. If the owner names a tool that isn't
@@ -86,4 +86,4 @@ integer cents, unknown values as `null`):
 
 End by telling the owner, in plain words, what was saved. Be exact about what is enforced today:
 any bakery bill payment over the approval amount they chose stops and asks for their yes before
-it goes out. Payments through other tools, the budget and the supplier list aren't checked yet.
+it goes out. Payments through other tools, the budget and the supplier list aren't checked.

@@ -15,7 +15,7 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 from bakery.seed import POLICIES
-from render.portal.__main__ import resolve
+from render.portal.__main__ import host_allowed, resolve
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "fixtures" / "portal"
@@ -128,6 +128,36 @@ def test_server_serves_only_portal_files() -> None:
     assert resolve("/__main__.py") is None
 
 
+def test_server_serves_only_the_onboarding_file_from_the_business_folder(tmp_path: Path) -> None:
+    assert resolve("/data/onboarding.json", business=tmp_path) is None  # not onboarded yet
+    (tmp_path / "receipts-onboarding.json").write_text("{}")
+    (tmp_path / "bakery.db").write_text("")
+    assert (
+        resolve("/data/onboarding.json", business=tmp_path) == tmp_path / "receipts-onboarding.json"
+    )
+    assert resolve("/data/receipts-onboarding.json", business=tmp_path) is None
+    assert resolve("/data/../bakery.db", business=tmp_path) is None
+
+
+def test_onboarding_symlink_cannot_lead_elsewhere(tmp_path: Path) -> None:
+    business, outside = tmp_path / "business", tmp_path / "outside"
+    business.mkdir()
+    outside.mkdir()
+    (outside / "secret.txt").write_text("token=abc123")
+    (business / "receipts-onboarding.json").symlink_to(outside / "secret.txt")
+    assert resolve("/data/onboarding.json", business=business) is None
+    loop = tmp_path / "loop"
+    loop.mkdir()
+    (loop / "receipts-onboarding.json").symlink_to(loop / "receipts-onboarding.json")
+    assert resolve("/data/onboarding.json", business=loop) is None
+
+
+def test_server_answers_only_to_this_machines_names() -> None:
+    assert host_allowed("127.0.0.1:8000", 8000) and host_allowed("localhost:8000", 8000)
+    for host in ["evil.example:8000", "127.0.0.1:9000", "127.0.0.1", None]:
+        assert not host_allowed(host, 8000), host
+
+
 # ---------- rendering ----------
 
 
@@ -221,7 +251,7 @@ def test_approval_card_has_no_check_list() -> None:
     card = html[html.index('<article class="card ask">') :]
     card = card[: card.index("</article>")]
     assert 'class="checks"' not in card
-    assert "Approve with passkey" in card
+    assert ">Approve<" in card
 
 
 @needs_node
@@ -245,7 +275,7 @@ def test_restock_order_card_needs_approval() -> None:
     assert 'class="checks"' not in card
     assert "Steps Claude took (6)" in card
     assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
-    assert "Approve with passkey" in card and "Decline" in card
+    assert ">Approve<" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
     assert tile.startswith('Waiting on you</span><span class="n">2<')
     assert "Sugar order, $120.00" in tile
@@ -328,6 +358,83 @@ def test_onboarding_rules_default_from_policies_and_escape_input() -> None:
     done = onboarding(3, rules)["main"] + onboarding(2, rules)["main"]
     assert "<script" not in done
     assert "Anything over $500" in done
+
+
+# The shape the Claude Code onboarding skill writes (receipts-onboarding/0).
+ANSWERS = {
+    "schema": "receipts-onboarding/0",
+    "payment_rules": {
+        "approval_threshold_cents": 25000,
+        "monthly_budget_cents": 400000,
+        "approved_suppliers": [
+            {"name": "Flour Co", "email_domain": "flourco.example", "account_last4": "4471"},
+            {"name": XSS, "email_domain": "x.example", "account_last4": "0000"},
+        ],
+    },
+}
+
+
+@needs_node
+def test_policies_and_rules_follow_the_onboarding_file() -> None:
+    d = data("pending")
+    d["onboarding"] = ANSWERS
+    policies = page(d, "policies")
+    assert "Payments over $250 need owner approval" in policies and "$250 limit" in policies
+    assert "$4,000 / month" in policies and "Approved: Flour Co, " in policies
+    assert "$500" not in policies
+    rules = run([{"data": d, "ui": {"view": "onboarding", "onboard": {"step": 2}}}])[0]["main"]
+    assert 'inputmode="numeric" value="250"' in rules
+    assert "<script" not in policies + rules
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "answers",
+    [
+        None,
+        {},
+        {"payment_rules": {"approval_threshold_cents": None, "monthly_budget_cents": "1"}},
+        {"payment_rules": {"monthly_budget_cents": 1e300, "approved_suppliers": []}},
+        {"payment_rules": {"approved_suppliers": [{"name": 7}]}},
+    ],
+)
+def test_missing_or_odd_onboarding_answers_keep_the_policies_file(answers: object) -> None:
+    d = data("pending")
+    d["onboarding"] = answers
+    policies = page(d, "policies")
+    assert "Payments over $500 need owner approval" in policies and "$3,000 / month" in policies
+
+
+@needs_node
+def test_no_budget_limit_from_onboarding_shows_as_no_limit() -> None:
+    d = data("pending")
+    d["onboarding"] = {"payment_rules": {"monthly_budget_cents": None}}
+    policies = page(d, "policies")
+    assert "No limit" in policies and "$3,000 / month" not in policies
+    form = run([{"data": d, "ui": {"view": "onboarding", "onboard": {"step": 2}}}])[0]["main"]
+    assert re.search(r'id="r-budget"[^>]*value=""[^>]*placeholder="No limit"', form)
+    # What Save rules stores from an empty budget box; the summary must still say no limit.
+    saved = {"suppliers": "Flour Co", "threshold_cents": 50000, "floor_cents": 200000}
+    saved |= {"budget_cents": None, "no_budget": True}
+    summary = onboarding(3, saved)["main"]
+    assert "No monthly budget limit" in summary and "$3,000 a month" not in summary
+
+
+@needs_node
+@pytest.mark.parametrize("bad", ["250", 25050.5, -100, 1e300, True])
+def test_an_invalid_saved_threshold_shows_every_payment_asks(bad: object) -> None:
+    # The approval hook (#15) asks about every payment when the saved amount isn't valid.
+    d = data("pending")
+    d["onboarding"] = {"payment_rules": {"approval_threshold_cents": bad}}
+    policies = page(d, "policies")
+    assert "Every payment needs owner approval" in policies and "$500" not in policies
+
+
+@needs_node
+def test_threshold_shows_to_the_cent() -> None:
+    d = data("pending")
+    d["onboarding"] = {"payment_rules": {"approval_threshold_cents": 25050}}
+    assert "Payments over $250.50 need owner approval" in page(d, "policies")
 
 
 @needs_node
@@ -424,7 +531,7 @@ def test_approving_the_restock_shows_every_bakesupply_tool() -> None:
     assert positions == sorted(positions)
     acts = page(data("pending"), "activities", ran=ran, dismissed=ran)
     assert "Ordered 3 bags of cane sugar from Flour Co, $120.00" in acts
-    assert '<span class="b b-mute">Approved</span>' in acts
+    assert '<span class="b b-mute">Answered</span>' in acts
 
 
 @needs_node
@@ -503,3 +610,61 @@ def test_bill_card_has_no_subtitle() -> None:
     card = card[: card.index("</article>")]
     assert 'class="muted"' not in card
     assert "16 bags of flour · due" not in card
+
+
+@needs_node
+def test_paid_state_summary_card_is_past_tense() -> None:
+    html = page(data("paid"))
+    assert "Claude says Flour Co was paid. It wasn&#39;t." not in html
+    assert "said Flour Co was paid before it was" in html
+    assert "Don&#39;t tell Flour Co" not in html
+
+
+@needs_node
+def test_decline_asks_before_acting() -> None:
+    html = page(data("pending"), confirming={"card": "att_approve", "action": 1})
+    card = html[html.index("Pay Flour Co $800.00 for bill BILL-07") :]
+    card = card[: card.index("</article>")]
+    assert "<strong>Decline this payment?</strong>" in card
+    assert 'data-act="confirm" data-card="att_approve">Decline</button>' in card
+
+
+@needs_node
+def test_needs_action_matches_open_cards() -> None:
+    html = page(data("stopped"), "activities", filter="action")
+    for title in [
+        "Payment of $800.00 to Flour Co stopped",
+        "Claude&#39;s summary said Flour Co was paid",
+    ]:
+        assert title in html
+    assert "Email to billing-help@outside.example stopped" not in html
+    done = page(data("stopped"), "activities", filter="action", dismissed={"att_mismatch": True})
+    assert "Claude&#39;s summary said Flour Co was paid" not in done
+
+
+@needs_node
+def test_order_page_details_from_review() -> None:
+    proposed = page(data("pending"), "order/PO-2042", **CHECKED)
+    assert "· proposed Sun 25 Oct" in proposed and "· placed" not in proposed
+    receipt = page(data("stopped"), "order/PO-2041", **{"from": "activities"})
+    assert '<details class="steps"><summary>Steps Claude took on this order (' in receipt
+    assert '<a href="#activities" aria-current="page">' in receipt
+
+
+@needs_node
+def test_passkey_only_on_onboarding_sign_in() -> None:
+    for state in STATES:
+        for view in ["dashboard", "activities", "policies", "order/PO-2041"]:
+            assert "passkey" not in page(data(state), view).lower(), (state, view)
+    assert "Sign in with your passkey" in onboarding(0)["main"]
+    for step in (1, 2, 3):
+        assert "passkey" not in onboarding(step)["main"].lower()
+    html = page(data("pending"), confirming={"card": "att_approve", "action": 0})
+    assert "<strong>Approve this payment?</strong>" in html
+    assert 'data-act="confirm" data-card="att_approve">Approve</button>' in html
+
+
+@needs_node
+def test_balance_matches_the_seed() -> None:
+    assert ">$4,800<" in page(data("pending"))
+    assert ">$4,000<" in page(data("paid"))

@@ -1,11 +1,21 @@
 import sqlite3
+from contextlib import closing
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
+from bakery.seed import VENDORS
 from bakesupply import server
 from bakesupply.seed import SUPPLIER, SUPPLIER_EMAIL, seed
-from bakesupply.server import MAX_QUANTITY, get_price, list_orders, list_products, place_order
+from bakesupply.server import (
+    MAX_QUANTITY,
+    get_invoice,
+    get_price,
+    list_orders,
+    list_products,
+    place_order,
+)
 
 
 @pytest.fixture
@@ -105,3 +115,69 @@ def test_relative_db_path_works(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.chdir(tmp_path)
     seed(Path("bakesupply.db"))
     assert list_products(Path("bakesupply.db"))
+
+
+def test_order_can_carry_the_bakerys_po_number(db: Path) -> None:
+    order = place_order("FLR-AP-50", 12, db, po_number=" po-2041 ")
+    assert order["ok"] is True
+    assert order["po_number"] == "PO-2041"
+    assert list_orders(db)[0]["po_number"] == "PO-2041"
+
+
+def test_po_number_is_optional(db: Path) -> None:
+    assert place_order("FLR-AP-50", 1, db)["po_number"] is None
+
+
+@pytest.mark.parametrize("po", ["2041", "PO-12", "PO-20411", "PO-ABCD", "", 2041, ["PO-2041"]])
+def test_bad_po_number_is_refused_and_changes_nothing(db: Path, po: object) -> None:
+    result = place_order("FLR-AP-50", 1, db, po_number=po)
+    assert result == {"ok": False, "error": "po_number must look like PO-2041"}
+    assert list_orders(db) == [] and stock(db, "FLR-AP-50") == 500
+
+
+def test_invoice_matches_the_order(db: Path) -> None:
+    place_order("FLR-AP-50", 12, db, po_number="PO-2041")
+    place_order("FLR-BR-50", 4, db, po_number="PO-2041")
+    first, second = get_invoice("ord_1", db), get_invoice("ord_2", db)
+    assert (first["id"], first["order_id"], first["po_number"]) == ("inv_1", "ord_1", "PO-2041")
+    assert (first["amount_cents"], second["amount_cents"]) == (60000, 20000)
+    assert first["supplier"] == "Flour Co" and first["supplier_email"] == SUPPLIER_EMAIL
+    issued = date.fromisoformat(first["issued_at"][:10])
+    assert first["due_date"] == (issued + timedelta(days=14)).isoformat()
+
+
+@pytest.mark.parametrize("order_id", ["ord_99", "1", "ord_", "ord_1; DROP", "", None])
+def test_invoice_for_a_bad_order_id_is_refused(db: Path, order_id: object) -> None:
+    place_order("FLR-AP-50", 1, db)
+    assert get_invoice(order_id, db)["ok"] is False
+
+
+def test_tools_accept_a_po_number_and_issue_an_invoice(db: Path, monkeypatch) -> None:
+    monkeypatch.setattr(server, "DB_PATH", db)
+    assert server._place_order("FLR-AP-50", 2, "PO-2041")["po_number"] == "PO-2041"
+    assert server._get_invoice("ord_1")["amount_cents"] == 10000
+
+
+def drop_po_column(db: Path) -> None:
+    """Make the database look like one seeded before PO numbers existed."""
+    with closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute("ALTER TABLE orders DROP COLUMN po_number")
+
+
+def test_an_older_database_gets_a_refusal_not_an_exception(db: Path) -> None:
+    drop_po_column(db)
+    result = place_order("FLR-AP-50", 1, db)
+    assert result["ok"] is False and "make reset" in result["error"]
+    assert stock(db, "FLR-AP-50") == 500 and list_orders(db) == []
+
+
+def test_invoice_for_an_order_in_an_older_database(db: Path) -> None:
+    place_order("FLR-AP-50", 1, db)
+    drop_po_column(db)
+    invoice = get_invoice("ord_1", db)
+    assert invoice["ok"] is True and invoice["po_number"] is None
+
+
+def test_invoice_says_where_to_pay_and_it_matches_the_bakerys_vendor(db: Path) -> None:
+    place_order("FLR-AP-50", 1, db)
+    assert get_invoice("ord_1", db)["pay_to_account"] == VENDORS[0][3]

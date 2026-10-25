@@ -65,5 +65,7 @@ def test_skill_example_matches_saved_shape() -> None:
     assert example["schema"] == "receipts-onboarding/0"
     assert example["status"] == "stub"
     assert set(example["integrations"]) == {"bookkeeping", "payments", "email", "other"}
+    assert "$500 (Recommended)" in skill
+    assert example["payment_rules"]["approval_threshold_cents"] == 50000
     for supplier in example["payment_rules"]["approved_suppliers"]:
         assert len(supplier["account_last4"]) == 4

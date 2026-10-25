@@ -19,17 +19,20 @@ the owner in one sentence before you start, so they know why you're asking.
 - Drop any question below that one of these already answers. If a round has nothing left to
   ask, skip it.
 
-## Round 1: tools (one AskUserQuestion call, up to three questions)
+## Round 1: tools and approval amount (one AskUserQuestion call, up to four questions)
 
-Ask the remaining questions in a single AskUserQuestion call. List options alphabetically; the
-owner can pick "Other" to name a different tool. Set `multiSelect: true` on Payments, since a
-business can use more than one; the other two are single choice.
+Ask the remaining questions in a single AskUserQuestion call. List the tool options
+alphabetically; the owner can pick "Other" to name a different tool or type their own amount.
+Set `multiSelect: true` on Payments, since a business can use more than one; the others are
+single choice. Approval lists its options in the order shown, with $500 first as the
+recommendation.
 
 | Header | Question | Options |
 |---|---|---|
 | Bookkeeping | Which bookkeeping software do you use? | QuickBooks · Xero · Zoho Books · None, I use a spreadsheet |
 | Payments | How do you pay suppliers or take payments? | PayPal · Square · Stripe · Bank transfer only |
 | Email | Where do supplier invoices arrive? | Gmail · Microsoft 365 (Outlook) |
+| Approval | Payments above what amount should need your written approval? | $500 (Recommended) · $1,000 · $2,500 |
 
 These cover the demo flow: an order, the supplier's invoice by email, and the payment. Don't walk
 through every tool the Small Business plugin supports. If the owner names a tool that isn't
@@ -41,9 +44,8 @@ Ask these together in one plain message, and accept short answers. Start the mes
 "For bank accounts, type only the last 4 digits, never the full number."
 
 1. What's the name of your business? (Skip if you already know it.)
-2. Payments above what amount should need your written approval? Default: $1,000.
-3. What's your monthly budget for supplies? "No limit" is fine.
-4. Which suppliers do you pay? For each one: the name, their email domain, and the **last 4
+2. What's your monthly budget for supplies? "No limit" is fine.
+3. Which suppliers do you pay? For each one: the name, their email domain, and the **last 4
    digits** of the bank account you pay them at.
 
 Never ask for, repeat or save a full account, card or IBAN number. If the owner types one, keep
@@ -54,6 +56,9 @@ only the last 4 digits, tell them you did, and say the full number stays in this
 - Each tool answer is stored as the option's label, or the owner's own words for "Other".
   Payments is a list. Tools the owner mentions beyond these questions go in `other`.
 - "None, I use a spreadsheet" and "Bank transfer only" are stored as those labels.
+- The approval amount is stored in integer cents in `approval_threshold_cents` ($500 is
+  `50000`). An amount typed under "Other" is converted the same way; if it isn't a dollar
+  amount, ask again.
 - "No limit" for the budget is stored as `null` in `monthly_budget_cents`.
 
 ## Save the answers
@@ -70,7 +75,7 @@ integer cents, unknown values as `null`):
   "business": {"name": "Sweet Rose Bakery", "from_smb_onboard": true},
   "integrations": {"bookkeeping": "QuickBooks", "payments": ["Square"], "email": "Gmail", "other": []},
   "payment_rules": {
-    "approval_threshold_cents": 100000,
+    "approval_threshold_cents": 50000,
     "monthly_budget_cents": 300000,
     "approved_suppliers": [
       {"name": "Flour Co", "email_domain": "flourco.example", "account_last4": "4471"}

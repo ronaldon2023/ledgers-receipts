@@ -88,7 +88,6 @@ dd small{display:block;color:var(--muted);font-size:13px}
 .ai{font:600 11px/1 var(--sans);padding:4px 7px;border-radius:999px;background:var(--hook-bg);color:var(--hook);margin-left:4px;white-space:nowrap}
 
 /* JSON handoff */
-.proposal{font:600 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;padding:5px 8px;border-radius:999px;border:1.5px dashed var(--guard);color:var(--guard);vertical-align:middle;margin-left:8px;white-space:nowrap}
 .file{flex:0.9 1 0;min-width:0;align-self:center;background:var(--card);border:2px solid var(--ink);border-radius:6px;padding:14px;display:grid;gap:6px;font-family:var(--mono);font-size:13px}
 .file b{font-size:14px}
 .file small{font-family:var(--sans);color:var(--muted);font-size:13px}
@@ -229,7 +228,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
   </section>
 
   <section aria-labelledby="json-h">
-    <h2 id="json-h">How the website and backend talk<span class="proposal">Proposal · needs team OK</span></h2>
+    <h2 id="json-h">How the website and backend talk</h2>
     <p class="lede" style="margin-bottom:16px">They never call each other directly. The backend rewrites one JSON file after every step, and the website reads that file to show the run live.</p>
     <div class="flow">
       <div class="stage">
@@ -240,7 +239,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
       <div class="file">
         <b>run_status.json</b>
         <span>{ "step": 3, "status": … }</span>
-        <small>Rewritten after every step. Name and shape not agreed yet.</small>
+        <small>Rewritten after every step. Exact fields to be defined in contracts/.</small>
       </div>
       <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
       <div class="stage">
@@ -261,10 +260,11 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
       <p><b>Display only.</b> The step file shows progress. The final verdict comes from the verifier's <code>receipt.json</code>.</p>
       <p><b>Built from the log.</b> The hash-chain log already records every step, so the file can be made from it.</p>
     </div>
-    <h3 style="margin-top:28px">Where the website runs: two options</h3>
+    <h3 style="margin-top:28px">Where the website runs: both ways</h3>
+    <p class="lede" style="margin-top:6px">The same website runs locally for an offline-safe demo, and hosted for a shareable link.</p>
     <div class="options">
       <div class="opt">
-        <span class="optlabel">Option A</span>
+        <span class="optlabel">Local mode</span>
         <h3>Local JSON file</h3>
         <p class="path">Backend → run_status.json → Website on localhost</p>
         <dl>
@@ -275,25 +275,25 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
         </dl>
       </div>
       <div class="opt">
-        <span class="optlabel">Option B</span>
+        <span class="optlabel">Hosted mode</span>
         <h3>GitHub Pages + Supabase</h3>
         <p class="path">Backend → Supabase → Website on GitHub Pages</p>
         <dl>
           <div class="row"><dt>Live updates</dt><dd>Supabase pushes each step to the page instantly</dd></div>
-          <div class="row"><dt>Setup</dt><dd>New service and library<small>needs team OK</small></dd></div>
-          <div class="row"><dt>Offline</dt><dd>Needs Wi-Fi; keep Option A as fallback</dd></div>
+          <div class="row"><dt>Setup</dt><dd>Adds Supabase and its library</dd></div>
+          <div class="row"><dt>Offline</dt><dd>Needs Wi-Fi; local mode is the fallback</dd></div>
           <div class="row"><dt>Sharing</dt><dd>Public link anyone can open; fake data only</dd></div>
           <div class="row"><dt>Keys</dt><dd>Public key in website with read-only access<small>Service key stays on the backend, never in the repo</small></dd></div>
         </dl>
       </div>
     </div>
-    <p class="note" style="margin-top:12px">Either way, Supabase or the JSON file is a display copy. The verifier still checks the local database and log.</p>
+    <p class="note" style="margin-top:12px">In both modes, the JSON file and Supabase are display copies. The verifier still checks the local database and log.</p>
   </section>
 
   <footer>
     <span>Source: whiteboard photo, <code>docs/whiteboard/2026-10-25-whiteboard.jpg</code> on branch <code>docs/whiteboard</code>.</span>
     <span>Change from the board: demo stage 1 now also covers the order lifecycle.</span>
-    <span>Added after the session: the JSON handoff between website and backend, and the Supabase hosting option (proposals).</span>
+    <span>Added after the session: the JSON handoff between website and backend, running both locally and hosted on GitHub Pages + Supabase.</span>
     <span>Interpretations added in redraw: "outside our system" for the black box, "made by a hook" for the receipt, and the one-line descriptions under each heading.</span>
   </footer>
 </div>

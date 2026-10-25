@@ -44,7 +44,7 @@ Findings on the merged work. Each one names the check that would catch it:
   BakeSupply and joins the results to `orders`.
 
 Merged since this section was read (14:33–14:59, not reviewed here): PRs #12 (payment checks), #7 (plugin skeleton),
-#15 (approval hook), #24 (onboarding), #18 (DB checks), the `local-server` merge (both servers registered), and
+#15 (approval hook), the `local-server` merge (both servers registered), #24 (onboarding), #18 (DB checks), and
 347248d (C4–C8 inside `pay_bill`). Next revision of §0 reads them.
 
 ## 1 · What this builds
@@ -261,8 +261,8 @@ wait on Q-supplier-tools.
 
 1. The owner asks Claude to pay Flour Co's bill. Claude reads it with `list_bills` and calls
    `mcp__bakery-local__pay_bill("BILL-07", 80000, to_account)`.
-2. The approval hook returns `ask`, and the owner approves or declines (C1). The pre-payment checks C4, C5, C7 and C8
-   run against `bakery.db`, and a failure refuses the payment. Where they're called from is D1, still open.
+2. The approval hook returns `ask`, and the owner approves or declines (C1). The pre-payment checks C4–C8
+   run against `bakery.db` inside `pay_bill` (D1, 347248d), and a failure refuses the payment.
 3. The PostToolUse hook on `pay_bill` creates the receipt for PO-2041 if none exists, then records the payment and each
    check's result. C10 confirms the payment row exists.
 4. At Stop, claims are extracted, verify runs `checks/payment.py` and the reconciliation checks, and the receipt gets
@@ -317,9 +317,12 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
 - **Q-db-write:** who saves the final receipt into the DB ("Outcome receipt → DB")? Default: an MCP tool
   `save_receipt(json)` that Luke and Owen add, called by the Stop hook.
 - **Q-supplier-tools (settled 14:40, Anthony):** use a real invoice when there is one, and the order receipt as a
-  stand-in until there is. Nobody has to change `place_order`.
-  - **If `place_order`'s response carries invoice fields** (amount, due date, sender, pay-to account), they become the
-    `bills` row and the receipt's `bill`, with a logged `bill_received` event.
+  stand-in until there is.
+  - **When the supplier provides an invoice**, it becomes the `bills` row and the receipt's `bill`, with a logged
+    `bill_received` event. Owen's open PR #26 adds `get_invoice(order_id)` to BakeSupply, returning
+    `amount_cents`, `due_date`, `supplier_email` and `po_number`, and an optional `po_number` on `place_order`
+    that links an order to `PO-2041` (F4). Its invoice has no pay-to account, so `pay_to_account` is still
+    copied from `vendors.bank_account`.
   - **If it doesn't**, the receipt's `bill` is filled from the order response: a new `bill_id` (default
     `BILL-<order id>`), `references_order`, `vendor_id`, and `amount_cents` from `total_cents`. `due_date` is a
     placeholder, the date part of the order's `created_at`. `from` and `received_at` are left out, because no
@@ -332,14 +335,14 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
     - Cost: on a stand-in, C8 and the bill half of C4 compare the file with itself, so they pass without proving
       anything. The `pay_bill` `to_account` half of C4 still means something. That's why a stand-in receipt can't be
       `VERIFIED` (below).
-    - Still open: which `bakery-local` tool writes the stand-in row. Only the server writes `bakery.db`, and the
-      agent has no tool that writes invoices. This goes with F4 (Luke, Owen, Ronaldo).
+    - Still open: which `bakery-local` tool writes the `bills` row, stand-in or from `get_invoice`. Only the server
+      writes `bakery.db`, and the agent has no tool that writes invoices. This goes with F4 (Luke, Owen, Ronaldo).
   - **The receipt shows the stand-in.** The `bill_received` event gets `source: "unverified"`, which the schema
     says the UI marks (Lana to confirm the website does). The schema's `bill` has `additionalProperties: false`, so there's no stand-in flag on the bill
     itself. Empty `from` and `received_at` are the stand-in's signature.
-  - **A real invoice replaces the stand-in when it arrives.** That covers a later `place_order` field, an inbox
+  - **A real invoice replaces the stand-in when it arrives.** That covers `get_invoice` (if #26 merges), an inbox
     message, or a seeded `bills` row. C5 and C8 then rerun against it.
-  - **Checks on a stand-in (default):** C5 would compare the order with itself, and C8 has no sender to check. So
+  - **Checks on a stand-in (default):** C5 would compare the order with itself, and C8 would compare the vendor's on-file sender with itself. So
     neither may be recorded as `verified`, and the verdict can't be `VERIFIED` while the bill is a stand-in.
     **None of this is enforced yet.** Today a stand-in receipt marked `VERIFIED` passes the schema,
     `xref_problems` and `ledger_problems`. `PAY-BILL-ORDER` passes it, and `PAY-ON-TIME` warns on the placeholder

@@ -1,11 +1,11 @@
 # Plan: checks, guards, verify, skills and hooks (Anthony's lane)
 
-Revision 3, 2026-10-25 ~14:40 PT: brought in line with PRs #2, #4 and #13 as merged (§0) and the decisions made
+Revision 3, 2026-10-25 ~14:35 PT: brought in line with PRs #2, #4, #10 and #13 as merged (§0) and the decisions made
 since revision 2. Written for Anthony and for the agent session working in the team repo (this repo). Read it cold:
 paths are repo-relative. The open questions left are in §8. Their defaults are labeled. **Where §0 and a later
 section disagree, §0 wins.**
 
-## 0 · Main as merged (read at 47423e6, 14:45)
+## 0 · Main as merged (read at 47423e6, 14:30)
 
 | Merged | What it put on main | What it changes in this plan |
 |---|---|---|
@@ -27,7 +27,7 @@ Not merged yet, but other work depends on it:
   `payee_on_file` skips unless the payment was sent and compares last 4 digits only, so it is not C4. C4, C5, C7,
   C8 and C10 against the DB aren't in it. Verify needs a mapping from `pass`/`fail`/`warn`/`skip` to the receipt's
   status enum.
-- **`plugin/skeleton`:** the plugin manifest and install note (the open plugin PR; number not confirmed from git).
+- **`plugin/skeleton`:** the plugin manifest and install note (PR #7, open).
 
 Findings on the merged work. Each one names the check that would catch it:
 - **F1:** the schema's top-level description says the receipt is created by "the PostToolUse hook on create_order",
@@ -104,7 +104,7 @@ either way the check logic is the shared `checks/` library, so only the call sit
 
 ## 3 · Dependencies and interfaces
 
-### Schema on main (read at 18f27c0, 14:25: `bakery/seed.py`, `bakesupply/seed.py`)
+### Schema on main (read at 47423e6, 14:30: `bakery/seed.py`, `bakesupply/seed.py`)
 
 Ronaldo's seed replaces the assumed shapes below. Names in this plan map to it as follows:
 
@@ -178,7 +178,7 @@ Every task follows the same flow: a branch, a PR, a reviewer subagent, then a pe
 | 11 | Swap `FixtureSource` for `SqliteSource` on Ronaldo's DB; rerun every test with the real tools; one live run | executor (opus) | The same tests pass on the real DB; the live run gives the expected receipt | DB + MCP |
 
 Tasks 0, 1 and 2 can start now. 4, 5, 6 and 8 run in parallel after 1–2. 3, 9 and 11 wait on the MCP and DB.
-As of 14:25 (§0): task 1's receipt schema is merged (PR #2). Task 2's receipt-only checks are on
+As of 14:30 (§0): task 1's receipt schema is merged (PR #2). Task 2's receipt-only checks are on
 `feature/payment-checks`, and its reconciliation checks (C7, C8, C10 against `bakery.db`) aren't started. Task 8's
 policy questions wait on #9.
 
@@ -279,10 +279,10 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
 
 **Check logic never lives in the receipt (13:55).** The receipt stores results; the logic lives only in `checks/`.
 - **Each `checks[]` entry:** required `id`, `status`, `lifecycle_stage`, `kind`, `title` and `evidence` (refs shaped
-  `s1:log:7`, `inbox:5` or `summary`), plus optional `guard` and `inputs`. `inputs` holds the masked values the check
+  `s1:log:7`, `inbox:5` or `summary`), plus optional `guard`, `inputs`, `caused_by` and `quote`. `inputs` holds the masked values the check
   compared, e.g. `{"pay_to": "******3210", "on_file": "********4471"}`.
 - **`checks_version`:** the git commit of the checks library that ran.
-- **`policy.sha256`:** the hash of the policy that ran. Until #9 lands, that's the empty policy `{}` (§0 F2).
+- **`policy.sha256`:** the hash of the policy that ran. Until #9 lands, that's the F2 default: the hash of the seeded `policies` rows, or of `{}` if Q-policy-seed drops them.
 - **Verify reruns the checks at finalize.** It recomputes each pre-payment check from the DB as it stood just before the
   payment under test (that payment's own row and later writes excluded, or C7 would always fail), with the same version and policy. A stored result that differs from the rerun is a finding of its own, and the verdict can't be `VERIFIED`.
 - **The website renders `title`, `evidence` and `inputs` as given** and evaluates nothing.
@@ -326,7 +326,7 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
   Task 8 must check it, so our onboarding can read the profile and skip questions it already asked.
 - **Q-ask-in-server:** default D2 keeps the human prompt in a hook. Alternative: the server refuses any
   over-threshold payment unless the call carries an approval the owner gave. That is Future: it needs auth.
-- **Q-policy-seed (new 14:45):** Ronaldo restored `policies` and `accounts` at 14:23 (7bf070f). Two minutes later,
+- **Q-policy-seed (new 14:30):** Ronaldo restored `policies` and `accounts` at 14:23 (7bf070f). Two minutes later,
   Anthony deferred policies and thresholds to #9. Anthony and Ronaldo decide:
   - **Default:** the rows stay as seed data, and stage 1 doesn't check them.
   - **Alternative:** stage 1 adds the threshold back, so C1 asks only over $500. A clean $800 payment of BILL-07

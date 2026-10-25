@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -145,3 +146,14 @@ def test_other_tool_silent(project: Path) -> None:
 @pytest.mark.parametrize("stdin", ["not json", "", "[]", '{"tool_input": "x"}'])
 def test_garbage_stdin_silent(project: Path, stdin: str) -> None:
     assert run_raw(project, stdin) == ""
+
+
+def test_hooks_json_registers_onboarding_write() -> None:
+    config = json.loads((ROOT / "hooks" / "hooks.json").read_text())
+    (entry,) = [
+        e
+        for e in config["hooks"]["PreToolUse"]
+        if any(h["command"].endswith('/hooks/onboarding_write.py"') for h in e["hooks"])
+    ]
+    assert re.search(entry["matcher"], "Write")
+    assert not re.search(entry["matcher"], "Edit")

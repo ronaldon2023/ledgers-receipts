@@ -1,5 +1,5 @@
 {
-  "description": "Receipts plugin hooks. SessionStart starts onboarding; PreToolUse asks the owner before a large payment. The receipt and Stop hooks land in later PRs.",
+  "description": "Receipts plugin hooks. SessionStart starts onboarding; PreToolUse asks the owner before a large payment and lets Claude save receipts-onboarding.json without a permission prompt. The receipt and Stop hooks land in later PRs.",
   "hooks": {
     "SessionStart": [
       {
@@ -19,6 +19,15 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/approve_payment.py\"",
             "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/onboarding_write.py\""
           }
         ]
       }

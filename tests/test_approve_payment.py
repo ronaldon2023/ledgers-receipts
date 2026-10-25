@@ -176,7 +176,11 @@ def test_unreadable_payments_judge_this_payment_alone(tmp_path: Path) -> None:
 def test_hooks_json_registers_approval() -> None:
     config = json.loads((ROOT / "hooks" / "hooks.json").read_text())
     assert config["hooks"]["SessionStart"]
-    (entry,) = config["hooks"]["PreToolUse"]
+    (entry,) = [
+        e
+        for e in config["hooks"]["PreToolUse"]
+        if re.search(e["matcher"], "mcp__bakery-local__pay_bill")
+    ]
     (hook,) = entry["hooks"]
     assert hook["onFailure"] == "block"
     assert hook["command"].endswith('/hooks/approve_payment.py"')

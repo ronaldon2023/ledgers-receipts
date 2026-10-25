@@ -1,7 +1,8 @@
 """Checks on the draft order receipt sample in docs/mock.
 
-The schema catches shape and contradictions; the tests here also catch what JSON Schema
-cannot express: dangling references, wrong sums, unmasked numbers and drift from the seed.
+The schema catches shape, contradictions and unmasked account numbers; the tests here also
+catch what JSON Schema cannot express: dangling or duplicate references, wrong sums and drift
+from the seed.
 """
 
 import copy
@@ -29,6 +30,10 @@ def schema_errors(receipt: dict) -> list[str]:
 def xref_problems(receipt: dict) -> list[str]:
     """Problems JSON Schema cannot see: references that point nowhere."""
     problems = []
+    ids = [c["id"] for c in receipt["checks"]]
+    problems += [f"duplicate check {i}" for i in sorted(set(ids)) if ids.count(i) > 1]
+    if receipt.get("supersedes") == receipt["receipt_id"]:
+        problems.append("receipt supersedes itself")
     checks = {c["id"]: c for c in receipt["checks"]}
     on_stage = {}
     for row in receipt["lifecycle"]:
@@ -48,11 +53,19 @@ def xref_problems(receipt: dict) -> list[str]:
     ]
     refs += [p["where"] for p in receipt["pii"]]
     problems += [f"ref {r} has no evidence entry" for r in refs if r not in receipt["evidence"]]
-    sessions = {s["session"] for s in receipt["sessions"]}
+    entries = {s["session"]: s["entries"] for s in receipt["sessions"]}
     for ref in receipt["evidence"]:
-        session = re.match(r"(s\d+):log:", ref)
-        if session and session.group(1) not in sessions:
+        found = re.match(r"(s\d+):log:(\d+)$", ref)
+        if not found:
+            continue
+        session, index = found.group(1), int(found.group(2))
+        if session not in entries:
             problems.append(f"ref {ref} names an unknown session")
+        elif not 1 <= index <= entries[session]:
+            problems.append(f"ref {ref} is past {session}'s {entries[session]} entries")
+    requested = receipt.get("authorization", {}).get("requested_by", {}).get("session")
+    if requested and requested not in entries:
+        problems.append(f"requested_by names unknown session {requested}")
     policies = {p["id"] for p in receipt.get("policies", [])}
     for check in checks.values():
         if "policy_id" in check and check["policy_id"] not in policies:
@@ -69,10 +82,35 @@ def test_references_resolve() -> None:
     assert xref_problems(SAMPLE) == []
 
 
-def test_dangling_evidence_ref_is_caught() -> None:
+def _dangling_ref(receipt: dict) -> None:
+    del receipt["evidence"]["s2:log:6"]
+
+
+def _duplicate_check(receipt: dict) -> None:
+    receipt["checks"].append(copy.deepcopy(receipt["checks"][0]))
+
+
+def _ref_past_entries(receipt: dict) -> None:
+    receipt["evidence"]["s2:log:9"] = "pay_bill  -> ok"
+
+
+# Each case breaks one reference; xref_problems must report the named problem.
+XREF_BREAKS = {
+    "ref s2:log:6 has no evidence entry": _dangling_ref,
+    "duplicate check chk_1": _duplicate_check,
+    "ref s2:log:9 is past s2's 6 entries": _ref_past_entries,
+    "requested_by names unknown session s7": lambda r: _set(
+        "authorization.requested_by.session", "s7"
+    )(r),
+    "receipt supersedes itself": lambda r: _set("supersedes", r["receipt_id"])(r),
+}
+
+
+@pytest.mark.parametrize("problem", sorted(XREF_BREAKS))
+def test_broken_reference_is_caught(problem: str) -> None:
     broken = copy.deepcopy(SAMPLE)
-    del broken["evidence"]["s2:log:6"]
-    assert "ref s2:log:6 has no evidence entry" in xref_problems(broken)
+    XREF_BREAKS[problem](broken)
+    assert problem in xref_problems(broken)
 
 
 def test_money_adds_up() -> None:
@@ -171,9 +209,48 @@ def _all_verified(receipt: dict) -> None:
         check["status"] = "verified"
 
 
+def _steps(*steps: Callable[[dict], None]) -> Callable[[dict], None]:
+    def apply(receipt: dict) -> None:
+        for step in steps:
+            step(receipt)
+
+    return apply
+
+
+def clean_receipt() -> dict:
+    """The sample turned into an order that went through: payment sent, every check green."""
+    receipt = copy.deepcopy(SAMPLE)
+    _all_verified(receipt)
+    receipt["verdict"] = "VERIFIED"
+    receipt["owner_action"] = {"needed": False}
+    payment = receipt["payment"]
+    payment.update(
+        status="sent", payment_id="pay_1", requested_to_account=payment["account_on_file"]
+    )
+    receipt["lifecycle"][-1]["status"] = "done"
+    return receipt
+
+
+def _drop_summary_checks(receipt: dict) -> None:
+    summary = {c["id"] for c in receipt["checks"] if c["kind"] == "summary"}
+    receipt["checks"] = [c for c in receipt["checks"] if c["id"] not in summary]
+    for row in receipt["lifecycle"]:
+        row["checks"] = [i for i in row["checks"] if i not in summary]
+
+
 # Each case is a receipt that contradicts itself; the schema must reject every one.
 CONTRADICTIONS = {
     "verified_with_red_check": _set("verdict", "VERIFIED"),
+    "verified_with_blocked_payment": _steps(_all_verified, _set("verdict", "VERIFIED")),
+    "payment_sent_but_stage_blocked": _steps(
+        _set("payment.status", "sent"), _set("payment.payment_id", "pay_1")
+    ),
+    "payment_blocked_but_stage_done": _set("lifecycle.5.status", "done"),
+    "summary_unchecked_but_summary_check": _set("summary_check", {"status": "not_checked"}),
+    "blocked_stage_unverified": _set("lifecycle.5.source", "unverified"),
+    "account_in_evidence": _set("evidence.inbox:5", "pay to account 9876543210"),
+    "account_in_quote": _set("checks.4.caused_by.quote", "pay to account 9876543210"),
+    "no_checks": _set("checks", []),
     "broken_chain_not_untrusted": _set("sessions.1.ok", False),
     "untrusted_with_intact_chains": _set("verdict", "UNTRUSTED"),
     "issues_found_all_green": _all_verified,
@@ -196,10 +273,16 @@ def test_contradiction_is_rejected(name: str) -> None:
     assert schema_errors(broken), f"{name} validated"
 
 
-def test_unchecked_summary_cannot_be_verified() -> None:
-    receipt = copy.deepcopy(SAMPLE)
-    _all_verified(receipt)
-    receipt["verdict"] = "VERIFIED"
+def test_clean_order_is_verified() -> None:
+    receipt = clean_receipt()
     assert schema_errors(receipt) == []
+    assert xref_problems(receipt) == []
+
+
+def test_failed_extractor_gives_issues_found() -> None:
+    receipt = clean_receipt()
+    _drop_summary_checks(receipt)
     receipt["summary_check"] = {"status": "error", "error": "extractor timed out"}
-    assert schema_errors(receipt)
+    assert schema_errors(receipt), "VERIFIED with an unchecked summary validated"
+    receipt["verdict"] = "ISSUES_FOUND"
+    assert schema_errors(receipt) == []

@@ -79,7 +79,7 @@
      "title": "Flour Co is an approved supplier", "evidence": ["s1:log:1"]},
     {"id": "chk_2", "status": "verified", "lifecycle_stage": "order_placed", "kind": "policy", "policy_id": "POL-BUDGET-MONTHLY",
      "title": "Order fits this month's supplies budget ($2,940 of $3,000)", "evidence": ["s1:log:1"],
-     "measured": {"as_of": "2026-10-20T09:11:00-07:00", "projected": true, "limit_cents": 300000, "used_cents": 214000, "after_cents": 294000}},
+     "measured": {"as_of": "2026-10-20T09:09:00-07:00", "projected": true, "limit_cents": 300000, "used_cents": 214000, "after_cents": 294000}},
     {"id": "chk_3", "status": "verified", "lifecycle_stage": "order_sent", "kind": "records",
      "title": "Order PO-2041 went to Flour Co's address on file, and the outbox has it", "evidence": ["s1:log:4"]},
     {"id": "chk_4", "status": "verified", "lifecycle_stage": "bill_received", "kind": "records",
@@ -108,7 +108,7 @@
   ],
 
   "left_business": [
-    {"action": "send_order", "to": "billing@flourco.example", "summary": "Order PO-2041: 16 bags of flour, $800.00"}
+    {"action": "send_email", "to": "billing@flourco.example", "summary": "Order PO-2041: 16 bags of flour, $800.00"}
   ],
 
   "pii": [

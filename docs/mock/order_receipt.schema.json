@@ -2,32 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "order_receipt.schema.json",
   "title": "Order receipt (draft v0)",
-  "description": "One receipt per order, written once when the order stops: payment sent, or stopped and waiting on the owner. A later attempt gets a new receipt that names this one in supersedes. Replaces PLAN.md contract 4 for order receipts. Money is integer cents; every value is already masked. Ids and addresses come from bakery.db (contract 1). Order field names follow schema.org Order where one fits.",
+  "description": "One receipt per order, written once when the order stops: payment sent, or stopped and waiting on the owner. A later attempt gets a new receipt that names this one in supersedes. Replaces PLAN.md contract 4 for order receipts. Money is integer cents; every value is already masked, and no free-text field may hold an 8+ digit run. Ids and addresses come from bakery.db (contract 1). Order field names follow schema.org Order where one fits.",
   "type": "object",
   "required": ["receipt_type", "receipt_id", "generated_at", "business", "verdict", "order", "bill", "payment",
                "lifecycle", "checks", "summary_check", "read", "left_business", "pii", "sessions", "evidence"],
   "additionalProperties": false,
   "properties": {
-    "$schema": {"type": "string"},
+    "$schema": {"$ref": "#/$defs/text"},
     "receipt_type": {"const": "order-receipt/v0"},
-    "receipt_id": {"type": "string"},
+    "receipt_id": {"$ref": "#/$defs/text"},
     "supersedes": {"type": ["string", "null"], "description": "receipt_id of an earlier receipt for the same order"},
     "generated_at": {"$ref": "#/$defs/datetime"},
     "business": {"$ref": "#/$defs/party"},
     "verdict": {"enum": ["VERIFIED", "ISSUES_FOUND", "UNTRUSTED"]},
-    "verdict_reason": {"type": "string"},
+    "verdict_reason": {"$ref": "#/$defs/text"},
     "owner_action": {
       "type": "object",
       "required": ["needed"],
       "additionalProperties": false,
-      "properties": {"needed": {"type": "boolean"}, "title": {"type": "string"}, "why": {"type": "string"}}
+      "properties": {"needed": {"type": "boolean"}, "title": {"$ref": "#/$defs/text"}, "why": {"$ref": "#/$defs/text"}}
     },
     "order": {
       "type": "object",
       "required": ["order_number", "order_date", "seller", "items", "currency", "total_cents"],
       "additionalProperties": false,
       "properties": {
-        "order_number": {"type": "string"},
+        "order_number": {"$ref": "#/$defs/text"},
         "order_date": {"$ref": "#/$defs/datetime"},
         "seller": {"$ref": "#/$defs/party", "description": "A vendors row"},
         "customer": {"$ref": "#/$defs/party"},
@@ -39,8 +39,8 @@
             "required": ["name", "quantity", "unit_price_cents", "total_cents"],
             "additionalProperties": false,
             "properties": {
-              "sku": {"type": "string"},
-              "name": {"type": "string"},
+              "sku": {"$ref": "#/$defs/text"},
+              "name": {"$ref": "#/$defs/text"},
               "quantity": {"type": "integer", "minimum": 1},
               "unit_price_cents": {"$ref": "#/$defs/cents"},
               "total_cents": {"$ref": "#/$defs/cents"}
@@ -59,12 +59,12 @@
       "required": ["bill_id", "vendor_id", "references_order", "amount_cents", "due_date"],
       "additionalProperties": false,
       "properties": {
-        "bill_id": {"type": "string"},
-        "vendor_id": {"type": "string"},
+        "bill_id": {"$ref": "#/$defs/text"},
+        "vendor_id": {"$ref": "#/$defs/text"},
         "vendor_invoice_number": {"type": "string", "description": "The supplier's own number, when it differs from bill_id"},
-        "references_order": {"type": "string"},
+        "references_order": {"$ref": "#/$defs/text"},
         "received_at": {"$ref": "#/$defs/datetime"},
-        "from": {"type": "string"},
+        "from": {"$ref": "#/$defs/text"},
         "amount_cents": {"$ref": "#/$defs/cents"},
         "due_date": {"type": "string", "format": "date"}
       }
@@ -80,10 +80,10 @@
         "amount_cents": {"$ref": "#/$defs/cents"},
         "requested_to_account": {"$ref": "#/$defs/masked"},
         "account_on_file": {"$ref": "#/$defs/masked"},
-        "method": {"type": "string"}
+        "method": {"$ref": "#/$defs/text"}
       },
       "if": {"properties": {"status": {"const": "sent"}}},
-      "then": {"properties": {"payment_id": {"type": "string"}}},
+      "then": {"properties": {"payment_id": {"$ref": "#/$defs/text"}}},
       "else": {"properties": {"payment_id": {"type": "null"}}}
     },
     "authorization": {
@@ -116,9 +116,9 @@
         "required": ["id", "kind", "title"],
         "additionalProperties": false,
         "properties": {
-          "id": {"type": "string"},
+          "id": {"$ref": "#/$defs/text"},
           "kind": {"enum": ["order", "payment", "budget"]},
-          "title": {"type": "string"},
+          "title": {"$ref": "#/$defs/text"},
           "limit_cents": {"$ref": "#/$defs/cents"}
         }
       }
@@ -138,20 +138,30 @@
             "enum": ["log", "unverified"],
             "description": "unverified: nothing in our logs shows this stage, so the UI marks it unverified"
           },
-          "checks": {"type": "array", "items": {"type": "string"}, "description": "ids from checks[]"}
+          "checks": {"type": "array", "items": {"$ref": "#/$defs/text"}, "description": "ids from checks[]"}
         },
-        "if": {"properties": {"source": {"const": "log"}, "status": {"enum": ["done", "blocked", "failed"]}}},
-        "then": {"properties": {"at": {"type": "string"}, "checks": {"minItems": 1}}}
+        "allOf": [
+          {
+            "if": {"properties": {"source": {"const": "log"}, "status": {"enum": ["done", "blocked", "failed"]}}},
+            "then": {"properties": {"at": {"$ref": "#/$defs/text"}, "checks": {"minItems": 1}}}
+          },
+          {
+            "description": "A block or failure is always logged",
+            "if": {"properties": {"status": {"enum": ["blocked", "failed"]}}},
+            "then": {"properties": {"source": {"const": "log"}}}
+          }
+        ]
       }
     },
     "checks": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "required": ["id", "status", "lifecycle_stage", "kind", "title", "evidence"],
         "additionalProperties": false,
         "properties": {
-          "id": {"type": "string"},
+          "id": {"$ref": "#/$defs/text"},
           "status": {
             "description": "PLAN.md contract 4 statuses, plus flagged and needs_approval",
             "enum": ["verified", "blocked", "flagged", "needs_approval", "phantom", "false_claim",
@@ -163,8 +173,8 @@
             "enum": ["policy", "guard", "records", "summary"]
           },
           "guard": {"enum": ["email_spoofing", "policy", "security"]},
-          "policy_id": {"type": "string"},
-          "title": {"type": "string"},
+          "policy_id": {"$ref": "#/$defs/text"},
+          "title": {"$ref": "#/$defs/text"},
           "measured": {
             "type": "object",
             "description": "Figures a budget check compared; projected means the payment has not happened",
@@ -184,9 +194,9 @@
             "type": "object",
             "required": ["ref", "quote"],
             "additionalProperties": false,
-            "properties": {"ref": {"$ref": "#/$defs/ref"}, "quote": {"type": "string"}}
+            "properties": {"ref": {"$ref": "#/$defs/ref"}, "quote": {"$ref": "#/$defs/text"}}
           },
-          "quote": {"type": "string", "description": "exact text from Claude's summary"}
+          "quote": {"$ref": "#/$defs/text", "description": "exact text from Claude's summary"}
         }
       }
     },
@@ -195,7 +205,7 @@
       "description": "Whether Claude's summary was checked. A failed claim extractor shows here, never as a clean receipt.",
       "required": ["status"],
       "additionalProperties": false,
-      "properties": {"status": {"enum": ["checked", "not_checked", "error"]}, "error": {"type": "string"}}
+      "properties": {"status": {"enum": ["checked", "not_checked", "error"]}, "error": {"$ref": "#/$defs/text"}}
     },
     "read": {
       "type": "array",
@@ -203,7 +213,7 @@
         "type": "object",
         "required": ["source", "count"],
         "additionalProperties": false,
-        "properties": {"source": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}
+        "properties": {"source": {"$ref": "#/$defs/text"}, "count": {"type": "integer", "minimum": 0}}
       }
     },
     "left_business": {
@@ -212,7 +222,7 @@
         "type": "object",
         "required": ["action", "to", "summary"],
         "additionalProperties": false,
-        "properties": {"action": {"type": "string"}, "to": {"type": "string"}, "summary": {"type": "string"}}
+        "properties": {"action": {"$ref": "#/$defs/text"}, "to": {"$ref": "#/$defs/text"}, "summary": {"$ref": "#/$defs/text"}}
       }
     },
     "pii": {
@@ -249,7 +259,7 @@
       "type": "object",
       "description": "Masked one-line excerpts keyed by ref",
       "propertyNames": {"$ref": "#/$defs/ref"},
-      "additionalProperties": {"type": "string"}
+      "additionalProperties": {"$ref": "#/$defs/text"}
     }
   },
   "allOf": [
@@ -264,25 +274,57 @@
       "then": {"properties": {"sessions": {"contains": {"properties": {"ok": {"const": false}}}}}}
     },
     {
-      "description": "VERIFIED needs every check verified and the summary checked",
+      "description": "VERIFIED needs every check verified, the summary checked, no stage blocked or failed, and nothing left for the owner",
       "if": {"properties": {"verdict": {"const": "VERIFIED"}}},
       "then": {
         "properties": {
           "checks": {"items": {"properties": {"status": {"const": "verified"}}}},
-          "summary_check": {"properties": {"status": {"const": "checked"}}}
+          "summary_check": {"properties": {"status": {"const": "checked"}}},
+          "payment": {"properties": {"status": {"enum": ["not_started", "sent"]}}},
+          "lifecycle": {"items": {"properties": {"status": {"enum": ["done", "not_reached"]}}}},
+          "owner_action": {"properties": {"needed": {"const": false}}}
         }
       }
     },
     {
-      "description": "ISSUES_FOUND needs at least one check that is not verified",
+      "description": "ISSUES_FOUND needs a check that is not verified, or a summary that could not be checked",
       "if": {"properties": {"verdict": {"const": "ISSUES_FOUND"}}},
-      "then": {"properties": {"checks": {"contains": {"properties": {"status": {"not": {"const": "verified"}}}}}}}
+      "then": {
+        "anyOf": [
+          {"properties": {"checks": {"contains": {"properties": {"status": {"not": {"const": "verified"}}}}}}},
+          {"properties": {"summary_check": {"properties": {"status": {"enum": ["not_checked", "error"]}}}}}
+        ]
+      }
+    },
+    {
+      "description": "An unchecked summary has no summary checks",
+      "if": {"properties": {"summary_check": {"properties": {"status": {"enum": ["not_checked", "error"]}}}}},
+      "then": {"properties": {"checks": {"not": {"contains": {"properties": {"kind": {"const": "summary"}}}}}}}
+    },
+    {
+      "description": "payment.status sent means the payment_sent stage is done, and only done",
+      "if": {"properties": {"payment": {"properties": {"status": {"const": "sent"}}}}},
+      "then": {"properties": {"lifecycle": {"$ref": "#/$defs/payment_stage_is_done"}}}
+    },
+    {
+      "description": "payment.status blocked means the payment_sent stage is blocked, and only blocked",
+      "if": {"properties": {"payment": {"properties": {"status": {"const": "blocked"}}}}},
+      "then": {"properties": {"lifecycle": {"$ref": "#/$defs/payment_stage_is_blocked"}}}
     }
   ],
   "$defs": {
     "cents": {"type": "integer", "minimum": 0},
     "datetime": {"type": "string", "format": "date-time"},
     "masked": {"type": "string", "pattern": "^\\*+[0-9]{4}$"},
+    "text": {"type": "string", "not": {"pattern": "[0-9]{8,}"}, "description": "Free text: no account-length digit run"},
+    "payment_stage_is_done": {
+      "contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"const": "done"}}},
+      "not": {"contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"not": {"const": "done"}}}}}
+    },
+    "payment_stage_is_blocked": {
+      "contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"const": "blocked"}}},
+      "not": {"contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"not": {"const": "blocked"}}}}}
+    },
     "ref": {"type": "string", "pattern": "^(s[0-9]+:log:[0-9]+|inbox:[0-9]+|summary)$"},
     "refs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ref"}},
     "stage": {"enum": ["order_placed", "order_sent", "fulfilled", "bill_received", "payment_ready", "payment_sent"]},
@@ -290,13 +332,13 @@
       "type": "object",
       "required": ["id", "name"],
       "additionalProperties": false,
-      "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "email": {"type": "string"}}
+      "properties": {"id": {"$ref": "#/$defs/text"}, "name": {"$ref": "#/$defs/text"}, "email": {"$ref": "#/$defs/text"}}
     },
     "actor": {
       "type": "object",
       "required": ["kind", "name"],
       "additionalProperties": false,
-      "properties": {"kind": {"enum": ["agent", "human"]}, "name": {"type": "string"}, "session": {"type": "string"}}
+      "properties": {"kind": {"enum": ["agent", "human"]}, "name": {"$ref": "#/$defs/text"}, "session": {"$ref": "#/$defs/text"}}
     }
   }
 }

@@ -1,7 +1,7 @@
 """Checks a write must pass before it runs: the plan's C4 to C8 for pay_bill.
 
-The MCP server's write tool calls evaluate() first and writes only if allowed() says so: no
-result is "block". Each check reads the records through a Source and never trusts the agent's
+The MCP server's write tool calls evaluate() first and writes only if no result is "block",
+which is what allowed() tests. Each check reads the records through a Source and never trusts the agent's
 arguments over them. Anything that goes wrong blocks (fail closed). Ids and statuses follow
 docs/order-lifecycle-plan.md section 5; C1 to C3 need the owner's policy (issue #9).
 
@@ -92,7 +92,8 @@ def c4_account_on_file(p: Payment) -> CheckResult:
             title = f"Account {_last4(to)} is not {name}'s on file; only the last 4 digits match"
         return CheckResult("C4", "block", title, ev, inputs)
     if asked != on_file:
-        title = f"The bill asks to pay {_last4(asked)}, not {name}'s on file {_last4(on_file)}"
+        shown = _last4(asked or raw_asked)
+        title = f"The bill asks to pay {shown}, not {name}'s on file {_last4(on_file)}"
         return CheckResult("C4", "block", title, ev, inputs)
     return CheckResult("C4", "pass", f"Pays {name}'s account on file", ev, inputs)
 

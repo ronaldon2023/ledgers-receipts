@@ -2,7 +2,8 @@
 
 Usage: python -m checks pay_bill '{"bill_id": "BILL-07", ...}' [--db bakery.db]
    prints one line per check. Exit 0: allowed. Exit 1: a check blocks the payment.
-   Exit 2: the checks couldn't run (no database, bad JSON), so nothing was decided.
+   Exit 2: the checks couldn't run (bad JSON, an unreadable database, a missing argument:
+   anything evaluate() reports as C0), so no check decided. The payment stays refused.
 """
 
 import argparse
@@ -25,11 +26,13 @@ def main() -> None:
         args = json.loads(opts.args)
         with SqliteSource(opts.db) as source:
             results = evaluate(opts.action, args, source)
-    except (json.JSONDecodeError, sqlite3.Error) as e:
+    except (ValueError, RecursionError, sqlite3.Error) as e:  # JSONDecodeError is a ValueError
         print(f"ERROR   checks couldn't run: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(2)
     for r in results:
         print(f"{r.status.upper():7} {r.id:3} {r.title}")
+    if any(r.id == "C0" for r in results):
+        sys.exit(2)
     sys.exit(0 if allowed(results) else 1)
 
 

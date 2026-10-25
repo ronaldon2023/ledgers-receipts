@@ -150,6 +150,13 @@ def test_other_separators_and_digits_block(db, to_account):
     assert blocked(run(db, {**CLEAN, "to_account": to_account})) == {"C4"}
 
 
+def test_malformed_account_on_the_bill_is_named_in_the_title(db):
+    change(db, "UPDATE bills SET pay_to_account = '0001x2345'")
+    with SqliteSource(db) as source:
+        c4 = evaluate("pay_bill", CLEAN, source)[0]
+    assert (c4.status, "••2345" in c4.title) == ("block", True)
+
+
 def test_unknown_bill_blocks_on_c6(db):
     results = run(db, {**CLEAN, "bill_id": "BILL-99"})
     assert blocked(results) == {"C6"}
@@ -222,11 +229,17 @@ def test_cli_exit_codes(db, tmp_path):
         return subprocess.run(cmd, check=False, capture_output=True, text=True)
 
     fraud = json.dumps({**CLEAN, "to_account": "9876543210"})
+    empty = tmp_path / "empty.db"
+    empty.touch()
     codes = [
         cli(json.dumps(CLEAN), db).returncode,
         cli(fraud, db).returncode,
         cli("{not json", db).returncode,
+        cli("[" * 200_000, db).returncode,
         cli(json.dumps(CLEAN), tmp_path / "absent.db").returncode,
+        cli(json.dumps(CLEAN), empty).returncode,
+        cli("null", db).returncode,
+        cli("[]", db).returncode,
     ]
-    assert codes == [0, 1, 2, 2]
+    assert codes == [0, 1, 2, 2, 2, 2, 2, 2]
     assert "C4" in cli(fraud, db).stdout

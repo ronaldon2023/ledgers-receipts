@@ -1,5 +1,5 @@
 {
-  "description": "Receipts plugin hooks. SessionStart starts onboarding; PreToolUse asks the owner before a large payment. The receipt and Stop hooks land in later PRs.",
+  "description": "Receipts plugin hooks. SessionStart starts onboarding; PreToolUse asks the owner before a large payment. Stop builds the receipt after a payment and shows the owner its portal link.",
   "hooks": {
     "SessionStart": [
       {
@@ -19,6 +19,17 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/approve_payment.py\"",
             "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/show_receipt.py\"",
+            "timeout": 30
           }
         ]
       }

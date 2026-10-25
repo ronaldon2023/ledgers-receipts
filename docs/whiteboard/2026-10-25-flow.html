@@ -87,13 +87,27 @@ dd{margin:0;color:var(--ink)}
 dd small{display:block;color:var(--muted);font-size:13px}
 .ai{font:600 11px/1 var(--sans);padding:4px 7px;border-radius:999px;background:var(--hook-bg);color:var(--hook);margin-left:4px;white-space:nowrap}
 
+/* JSON handoff */
+.proposal{font:600 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;padding:5px 8px;border-radius:999px;border:1.5px dashed var(--guard);color:var(--guard);vertical-align:middle;margin-left:8px;white-space:nowrap}
+.file{flex:0.9 1 0;min-width:0;align-self:center;background:var(--card);border:2px solid var(--ink);border-radius:6px;padding:14px;display:grid;gap:6px;font-family:var(--mono);font-size:13px}
+.file b{font-size:14px}
+.file small{font-family:var(--sans);color:var(--muted);font-size:13px}
+.steps{counter-reset:s;list-style:none;margin:16px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.steps li{counter-increment:s;display:grid;gap:4px;background:var(--card);border:1.5px solid var(--rule);border-radius:8px;padding:10px;font-size:13px}
+.steps li::before{content:"Step " counter(s);width:auto;height:auto;background:none;border-radius:0;transform:none;font:600 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.steps li.final{border-color:var(--hook);background:var(--hook-bg)}
+.steps code{font-size:12px;color:var(--marker)}
+.rulesmall{margin-top:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px}
+.rulesmall p{font-size:14px}
+
 footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);padding-top:14px;display:grid;gap:4px}
 
 @media (max-width:860px){
   .flow{flex-direction:column}
   .arrow{flex-basis:36px}
   .arrow svg{transform:rotate(90deg)}
-  .rules,.two,.outcomes{grid-template-columns:minmax(0,1fr)}
+  .rules,.two,.outcomes,.rulesmall{grid-template-columns:minmax(0,1fr)}
+  .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 </style>
 
@@ -208,9 +222,45 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
     </div>
   </section>
 
+  <section aria-labelledby="json-h">
+    <h2 id="json-h">How the website and backend talk<span class="proposal">Proposal · needs team OK</span></h2>
+    <p class="lede" style="margin-bottom:16px">They never call each other directly. The backend rewrites one JSON file after every step, and the website reads that file to show the run live.</p>
+    <div class="flow">
+      <div class="stage">
+        <div class="stage-head"><h3>Backend</h3></div>
+        <ul><li>MCP: bank, inventory</li><li>DB</li><li>Checks <span class="ai">no AI</span></li></ul>
+      </div>
+      <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+      <div class="file">
+        <b>run_status.json</b>
+        <span>{ "step": 3, "status": … }</span>
+        <small>Rewritten after every step. Name and shape not agreed yet.</small>
+      </div>
+      <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+      <div class="stage">
+        <div class="stage-head"><h3>Website</h3></div>
+        <ul><li>Dashboard (live progress)</li><li>Policies</li><li>Order receipt</li></ul>
+      </div>
+    </div>
+    <ol class="steps" aria-label="When the file is updated">
+      <li>Order created<code>order saved</code></li>
+      <li>Invoice received<code>invoice in DB</code></li>
+      <li>Payment triggered<code>by time or request</code></li>
+      <li>Validated<code>checks passed or failed</code></li>
+      <li class="final">Receipt ready<code>receipt.json</code></li>
+    </ol>
+    <div class="rulesmall">
+      <p><b>One writer.</b> Only one backend part writes the file, so updates never overwrite each other.</p>
+      <p><b>No half-written reads.</b> The backend writes a temp file and swaps it in. The website checks every second or so.</p>
+      <p><b>Display only.</b> The step file shows progress. The final verdict comes from the verifier's <code>receipt.json</code>.</p>
+      <p><b>Built from the log.</b> The hash-chain log already records every step, so the file can be made from it.</p>
+    </div>
+  </section>
+
   <footer>
     <span>Source: whiteboard photo, <code>docs/whiteboard/2026-10-25-whiteboard.jpg</code> on branch <code>docs/whiteboard</code>.</span>
     <span>Change from the board: demo stage 1 now also covers the order lifecycle.</span>
+    <span>Added after the session: the JSON handoff between website and backend (proposal).</span>
     <span>Interpretations added in redraw: "outside our system" for the black box, "made by a hook" for the receipt, and the one-line descriptions under each heading.</span>
   </footer>
 </div>

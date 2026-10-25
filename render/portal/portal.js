@@ -316,6 +316,12 @@ Portal.receiptBody = function (r) {
 Portal.orderReceiptFile = function (state, num) {
   return state === "live" && /^[A-Za-z0-9_-]{1,40}$/.test(num || "") ? "receipt_live_" + num + ".json" : null;
 };
+// The approval amount box, whole dollars, as cents; null when it is empty or unreadable, so an
+// empty box is never saved as $0 (which would make every payment ask).
+Portal.thresholdCents = function (text, badInput) {
+  var s = String(text == null ? "" : text).trim(), v = +s;
+  return badInput || s === "" || !isFinite(v) || v < 0 ? null : Math.round(v) * 100;
+};
 Portal.receiptFor = function (d, num) {
   var mine = function (r) { return r && r.order && r.order.order_number === num ? r : null; };
   return mine(d.orderReceipt) || mine(d.receipt); // its own file first, then the feed's receipt
@@ -532,7 +538,9 @@ if (typeof document !== "undefined") (function () {
       return r.text();
     });
   }
+  var loads = 0, shown = 0; // load() calls started, and the newest one whose answer was used
   function load() {
+    var n = ++loads;
     // onboarding.json is the owner's receipts-onboarding.json; until onboarding runs there is none.
     var onb = get("onboarding.json").catch(function () { return "null"; });
     // On an order page in live mode, that order's own receipt; a missing file falls back to the feed row.
@@ -543,6 +551,8 @@ if (typeof document !== "undefined") (function () {
       try { answers = JSON.parse(t[2]); } catch (e) { /* a half-written file: ignore it */ }
       try { orderReceipt = JSON.parse(t[3]); } catch (e) { /* being rewritten: try again next second */ }
       return (feed.receipt ? get(feed.receipt) : Promise.resolve("null")).then(function (rt) {
+        if (n < shown) return; // an older load finished late (say, from before a click): a newer one wins
+        shown = n;
         if (t.join("") + rt === last) return; // unchanged: keep open sections open
         last = t.join("") + rt;
         data = { feed: feed, receipt: JSON.parse(rt), orderReceipt: orderReceipt, policies: JSON.parse(t[1]), onboarding: answers };
@@ -615,8 +625,14 @@ if (typeof document !== "undefined") (function () {
       var dollars = function (id) { var v = Math.round(+document.getElementById(id).value); return (v > 0 ? v : 0) * 100; };
       var box = document.getElementById("r-budget"); // empty box: no limit; unreadable text is not empty
       var noBudget = box.value.trim() === "" && !(box.validity && box.validity.badInput);
-      o.rules = { suppliers: document.getElementById("r-suppliers").value.trim(), threshold_cents: dollars("r-threshold"),
+      var limit = document.getElementById("r-threshold");
+      o.rules = { suppliers: document.getElementById("r-suppliers").value.trim(),
+        threshold_cents: Portal.thresholdCents(limit.value, limit.validity && limit.validity.badInput),
         budget_cents: noBudget ? null : dollars("r-budget"), no_budget: noBudget, floor_cents: dollars("r-floor") };
+      if (o.rules.threshold_cents === null) {
+        o.error = "enter the amount, in dollars, above which Ledger asks you first";
+        return set({});
+      }
       o.saving = true;
       o.error = null;
       set({});

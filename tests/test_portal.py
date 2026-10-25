@@ -743,6 +743,15 @@ def _js(expr: str) -> object:
 
 
 @needs_node
+def test_empty_approval_amount_is_not_saved_as_zero() -> None:
+    assert _js('Portal.thresholdCents("500", false)') == 50000
+    assert _js('Portal.thresholdCents(" 0 ", false)') == 0  # $0 typed: ask before every payment
+    assert _js('Portal.thresholdCents("499.6", false)') == 50000
+    for text, bad in [("", False), ("   ", False), ("", True), ("-5", False), ("abc", False)]:
+        assert _js(f"Portal.thresholdCents({json.dumps(text)}, {json.dumps(bad)})") is None
+
+
+@needs_node
 def test_live_order_receipt_file_names_are_safe() -> None:
     assert _js('Portal.orderReceiptFile("live", "PO-2038")') == "receipt_live_PO-2038.json"
     for num in ["../policies", "PO 2038", "", "a/b", "x" * 41]:

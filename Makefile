@@ -12,6 +12,7 @@ test:
 
 reset:
 	$(PY) -m bakery.seed
+	$(PY) -m bakesupply.seed
 	rm -f logs/chain.jsonl
 
 replay:

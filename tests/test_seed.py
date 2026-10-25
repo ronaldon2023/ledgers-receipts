@@ -109,3 +109,20 @@ def test_policies_and_budget_numbers(tmp_path: Path) -> None:
     assert spent == [(294000,)]  # $2,940 of the $3,000 budget
     (balance,) = query(db, "SELECT balance_cents FROM accounts WHERE id = 'ACC-OPS'")[0]
     assert balance - 80000 >= limits["POL-BANK-FLOOR"]
+
+
+def test_demo_bad_bills(tmp_path: Path) -> None:
+    db = tmp_path / "bakery.db"
+    seed(db)
+    rows = {
+        r[0]: r[1:]
+        for r in query(
+            db,
+            "SELECT b.id, b.from_addr = v.email, b.pay_to_account = v.bank_account, "
+            "b.amount_cents = o.total_cents FROM bills b JOIN vendors v ON v.id = b.vendor_id "
+            "JOIN orders o ON o.id = b.order_id",
+        )
+    }
+    assert rows["BILL-07"] == (1, 1, 1)  # clean
+    assert rows["BILL-08"] == (1, 0, 1)  # changed account
+    assert rows["BILL-09"] == (0, 1, 1)  # spoofed sender

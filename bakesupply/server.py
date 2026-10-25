@@ -31,7 +31,7 @@ class Refused(Exception):
 def _connect(db_path: Path | None, read_only: bool = True) -> Iterator[sqlite3.Connection]:
     """Open the database, commit on success, and always close it."""
     mode = "ro" if read_only else "rw"
-    conn = sqlite3.connect(f"{(db_path or DB_PATH).as_uri()}?mode={mode}", uri=True)
+    conn = sqlite3.connect(f"{(db_path or DB_PATH).resolve().as_uri()}?mode={mode}", uri=True)
     conn.row_factory = sqlite3.Row
     with closing(conn), conn:
         yield conn

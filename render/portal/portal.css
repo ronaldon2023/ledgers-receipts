@@ -99,7 +99,7 @@ section { display: flex; flex-direction: column; gap: 14px; }
 .btn.primary { background: var(--brown); border-color: var(--brown); color: var(--on-brown); }
 .btn.primary:hover { background: var(--brown-hover); border-color: var(--brown-hover); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--brown); text-decoration: underline; padding: 0 8px; }
-.passkey { border: 1.5px dashed var(--brown); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--sunk); }
+.confirmbox { border: 1.5px dashed var(--brown); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--sunk); }
 .attn { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 
 /* Glance */

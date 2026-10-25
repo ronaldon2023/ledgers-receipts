@@ -75,7 +75,7 @@ Portal.PAYMENT = { not_started: "Not started", blocked: "Stopped", sent: "Sent",
 // Who did a step: Claude in brown, the owner in blue, code in default ink.
 Portal.ACTORS = {
   claude: ["Claude", "AI agent", "ai"], checks: ["Checks", "Code", ""], guard: ["Guard", "Code", ""],
-  verifier: ["Verifier", "Code", ""], you: ["You", "Passkey", "you"], trigger: ["Schedule", "Trigger", ""],
+  verifier: ["Verifier", "Code", ""], you: ["You", "Owner", "you"], trigger: ["Schedule", "Trigger", ""],
   supplier: ["Supplier", "Supplier", ""], _unknown: ["Unknown", "", ""]
 };
 
@@ -103,18 +103,18 @@ Portal.stepsBlock = function (feed, ids) {
   return '<details class="steps"><summary>Steps Claude took (' + list.length + ')</summary>' + Portal.trail(list) + '</details>';
 };
 Portal.legend = '<div class="legend"><span><b>Claude</b> · AI agent, does the work</span>' +
-  '<span><b>Checks, Guard, Verifier</b> · plain code, no AI</span><span><b>You</b> · passkey approvals</span></div>';
+  '<span><b>Checks, Guard, Verifier</b> · plain code, no AI</span><span><b>You</b> · approvals</span></div>';
 
 /* ---------- needs your attention ---------- */
 Portal.quote = function (q) {
   var t = q.plain ? Portal.esc(q.text) : '"' + Portal.esc(q.text) + '"';
   return '<div class="quote"><b>' + Portal.esc(q.label) + '</b>' + t + '</div>';
 };
-// Inline confirm panel: approvals ask for the passkey; other actions (Decline) name their own button.
-Portal.passkey = function (card, a) {
-  var esc = Portal.esc, title = a.confirm_title || "Confirm with your passkey";
-  return '<div class="passkey" role="group" aria-label="' + esc(title) + '"><strong>' + esc(title) + '</strong><span>' + esc(a.confirm) + '</span>' +
-    '<div class="actions"><button type="button" class="btn primary" data-act="passkey" data-card="' + esc(card) + '">' + esc(a.confirm_button || "Use passkey") + '</button>' +
+// Inline confirm panel before an action takes effect (Approve, Decline, Pay); each action names its own labels.
+Portal.confirmPanel = function (card, a) {
+  var esc = Portal.esc, title = a.confirm_title || "Are you sure?";
+  return '<div class="confirmbox" role="group" aria-label="' + esc(title) + '"><strong>' + esc(title) + '</strong><span>' + esc(a.confirm) + '</span>' +
+    '<div class="actions"><button type="button" class="btn primary" data-act="confirm" data-card="' + esc(card) + '">' + esc(a.confirm_button || "Confirm") + '</button>' +
     '<button type="button" class="btn ghost" data-act="cancel">Cancel</button></div></div>';
 };
 Portal.card = function (feed, c, ui) {
@@ -134,7 +134,7 @@ Portal.card = function (feed, c, ui) {
   var actions = c.actions || [], wait = ui.confirming && ui.confirming.card === c.id ? actions[ui.confirming.action] : null;
   var run = ui.running && ui.running.card === c.id ? ui.running : null;
   if (run) return h + Portal.running(actions[run.action], run.step) + '</article>';
-  h += wait ? Portal.passkey(c.id, wait) : '<div class="actions">' + actions.map(function (a, i) {
+  h += wait ? Portal.confirmPanel(c.id, wait) : '<div class="actions">' + actions.map(function (a, i) {
     if (a.href) return '<a class="btn ghost linkbtn" href="' + esc(Portal.href(a.href)) + '">' + esc(a.label) + '</a>';
     return '<button type="button" class="btn' + (a.primary ? ' primary' : '') + '" data-card="' + esc(c.id) + '" data-action="' + i + '">' + esc(a.label) + '</button>';
   }).join("") + '</div>';
@@ -362,7 +362,7 @@ Portal.onboarding = function (d, ui) {
     }).join("") + '</ol><section class="card onb">';
   if (step === 0) {
     h += '<h2>Welcome, ' + esc(d.feed.owner) + '</h2><p>Ledger shows you everything Claude does for your business. Claude does the work, plain code checks every step, and nothing over your limits happens without you.</p>' +
-      '<div class="passkey"><strong>Sign in with your passkey</strong><span>Use Touch ID, Face ID or your security key. The same passkey approves payments later, so a stolen email or password can\'t move your money.</span>' +
+      '<div class="confirmbox"><strong>Sign in with your passkey</strong><span>Use Touch ID, Face ID or your security key to sign in to Ledger. There\'s no password to steal.</span>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="signin">Use passkey</button></div></div>';
   } else if (step === 1) {
     var cmd = function (c, i) {
@@ -390,8 +390,8 @@ Portal.onboarding = function (d, ui) {
     h += '<h2>You\'re set</h2><ol class="summary">' +
       '<li><b>Claude does the work</b><span>Orders supplies, pays bills and answers email, using the order and payment skills.</span></li>' +
       '<li><b>Code checks every step</b><span>Approved suppliers: ' + esc(r.suppliers || "none yet") + '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ' + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</span></li>' +
-      '<li><b>You approve</b><span>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</span></li>' +
-      '<li><b>Alerts</b><span>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</span></li></ol>' +
+      '<li><b>You approve</b><span>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', here in Ledger.</span></li>' +
+      '<li><b>Alerts</b><span>We email you when something needs you. Email buttons only open Ledger; you approve here, never by email.</span></li></ol>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="finish">Go to dashboard</button>' + back + '</div>';
   }
   return h + '</section>';
@@ -414,7 +414,7 @@ Portal.page = function (d, ui) {
     }).join("") + '<div class="navbtns"><button type="button" class="btn" data-onb="again">Start onboarding</button>' +
     '<button type="button" class="btn" data-act="reset">Restart demo</button></div>' +
     '<div class="meta"><span>' + esc(Portal.day(d.feed.as_of) + " · " + Portal.time(d.feed.as_of)) + '</span><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
-    '<span>Signed in as ' + esc(d.feed.owner) + ' · passkey</span></div>';
+    '<span>Signed in as ' + esc(d.feed.owner) + '</span></div>';
   return { side: side, main: main };
 };
 
@@ -452,7 +452,7 @@ if (typeof document !== "undefined") (function () {
   }
   function confirmOpen(p) {
     set(p);
-    var b = app.querySelector('[data-act="passkey"]');
+    var b = app.querySelector('[data-act="confirm"]');
     if (b) b.focus();
   }
   function set(p) {
@@ -547,8 +547,8 @@ if (typeof document !== "undefined") (function () {
     if (act === "reset") { clearInterval(timer); clearTimeout(timer); ui.running = ui.leaving = ui.entering = null; ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
     if (act === "cancel") return set({ confirming: null });
     if (!card) return;
-    var i = act === "passkey" && ui.confirming ? ui.confirming.action : +t.getAttribute("data-action"), a = card.actions[i];
-    if (a.confirm && act !== "passkey") return confirmOpen({ confirming: { card: card.id, action: i } });
+    var i = act === "confirm" && ui.confirming ? ui.confirming.action : +t.getAttribute("data-action"), a = card.actions[i];
+    if (a.confirm && act !== "confirm") return confirmOpen({ confirming: { card: card.id, action: i } });
     if (a.progress) return startRun(card, i);
     if (a.run) ui.ran[card.id] = true; // e.g. Start check: reveals what that run produced
     if (a.dismiss || a.run) { ui.dismissed[card.id] = true; set({ confirming: null }); }

@@ -221,7 +221,7 @@ def test_approval_card_has_no_check_list() -> None:
     card = html[html.index('<article class="card ask">') :]
     card = card[: card.index("</article>")]
     assert 'class="checks"' not in card
-    assert "Approve with passkey" in card
+    assert ">Approve<" in card
 
 
 @needs_node
@@ -245,7 +245,7 @@ def test_restock_order_card_needs_approval() -> None:
     assert 'class="checks"' not in card
     assert "Steps Claude took (6)" in card
     assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
-    assert "Approve with passkey" in card and "Decline" in card
+    assert ">Approve<" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
     assert tile.startswith('Waiting on you</span><span class="n">2<')
     assert "Sugar order, $120.00" in tile
@@ -519,7 +519,7 @@ def test_decline_asks_before_acting() -> None:
     card = html[html.index("Pay Flour Co $800.00 for bill BILL-07") :]
     card = card[: card.index("</article>")]
     assert "<strong>Decline this payment?</strong>" in card
-    assert 'data-act="passkey" data-card="att_approve">Decline</button>' in card
+    assert 'data-act="confirm" data-card="att_approve">Decline</button>' in card
 
 
 @needs_node
@@ -542,3 +542,22 @@ def test_order_page_details_from_review() -> None:
     receipt = page(data("stopped"), "order/PO-2041", **{"from": "activities"})
     assert '<details class="steps"><summary>Steps Claude took on this order (' in receipt
     assert '<a href="#activities" aria-current="page">' in receipt
+
+
+@needs_node
+def test_passkey_only_on_onboarding_sign_in() -> None:
+    for state in STATES:
+        for view in ["dashboard", "activities", "policies", "order/PO-2041"]:
+            assert "passkey" not in page(data(state), view).lower(), (state, view)
+    assert "Sign in with your passkey" in onboarding(0)["main"]
+    for step in (1, 2, 3):
+        assert "passkey" not in onboarding(step)["main"].lower()
+    html = page(data("pending"), confirming={"card": "att_approve", "action": 0})
+    assert "<strong>Approve this payment?</strong>" in html
+    assert 'data-act="confirm" data-card="att_approve">Approve</button>' in html
+
+
+@needs_node
+def test_balance_matches_the_seed() -> None:
+    assert ">$4,800<" in page(data("pending"))
+    assert ">$4,000<" in page(data("paid"))

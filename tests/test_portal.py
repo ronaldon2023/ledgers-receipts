@@ -208,3 +208,25 @@ def test_stopped_trail_shows_pay_bill_then_guard() -> None:
     )
     assert flag < call < guard
     assert card.index(">Blocked<") > call
+
+
+@needs_node
+def test_restock_order_card_needs_approval() -> None:
+    html = page(data("pending"))
+    start = html.index("Order 100 kg of sugar from BakeSupply")
+    card = html[html.rindex("<article", 0, start) : html.index("</article>", start)]
+    assert 'class="card ask"' in card
+    assert 'class="checks"' not in card
+    assert "Steps Claude took (4)" in card
+    assert "bakesupply.get_price · ingredient=sugar" in card
+    assert "Approve with passkey" in card and "Decline" in card
+    tile = html[html.index("Waiting on you") :]
+    assert tile.startswith('Waiting on you</span><span class="n">2<')
+    assert "Sugar order, $95.00" in tile
+
+
+@needs_node
+def test_dismissed_card_leaves_waiting_count() -> None:
+    html = page(data("declined"), dismissed={"att_order": True})
+    assert "Order 100 kg of sugar from BakeSupply" not in html
+    assert 'Waiting on you</span><span class="n">0<' in html

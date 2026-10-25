@@ -17,12 +17,8 @@
       "floor_cents": 200000,
       "note": "nothing was paid"
     },
-    "waiting": {
-      "count": 0,
-      "note": "No approvals waiting"
-    },
     "run": {
-      "steps": 11,
+      "steps": 15,
       "blocked": 2
     }
   },
@@ -94,6 +90,34 @@
           "level": "info"
         }
       ]
+    },
+    {
+      "order_number": "BS-2",
+      "seller": "BakeSupply",
+      "summary": "100 kg of sugar (proposed)",
+      "total_cents": 9500,
+      "placed_at": "2026-10-25T13:42:00-07:00",
+      "seller_email": "orders@bakesupply.example",
+      "items": [
+        {
+          "name": "Sugar (25 kg bag), per kg",
+          "quantity": 100,
+          "total_cents": 9500
+        }
+      ],
+      "bill_id": null,
+      "bill_due": null,
+      "receipt_note": "Not placed yet. Claude orders it only after you approve with your passkey.",
+      "progress": [
+        {
+          "label": "Proposed by Claude",
+          "level": "done"
+        },
+        {
+          "label": "Waiting on you",
+          "level": "approve"
+        }
+      ]
     }
   ],
   "attention": [
@@ -157,6 +181,38 @@
         "s2:log:6",
         "summary",
         "chk_9"
+      ]
+    },
+    {
+      "id": "att_order",
+      "level": "approve",
+      "context": "Order · asked by Claude",
+      "at": "2026-10-25T13:42:00-07:00",
+      "title": "Order 100 kg of sugar from BakeSupply",
+      "amount_cents": 9500,
+      "subtitle": "Sugar is down to 12 kg, about 2 days left · goes over October's supplies budget by $87",
+      "short": "Sugar order, $95.00",
+      "actions": [
+        {
+          "label": "Approve with passkey",
+          "primary": true,
+          "dismiss": true,
+          "confirm": "Approve ordering 100 kg of sugar from BakeSupply for $95.00."
+        },
+        {
+          "label": "Decline",
+          "dismiss": true
+        },
+        {
+          "label": "Open order",
+          "href": "#order/BS-2"
+        }
+      ],
+      "steps": [
+        "s4:log:1",
+        "s4:log:2",
+        "s4:log:3",
+        "chk_bs_3"
       ]
     }
   ],
@@ -247,6 +303,22 @@
       "steps": [
         "s2:log:1",
         "chk_5"
+      ]
+    },
+    {
+      "id": "ev_bs_ask",
+      "at": "2026-10-25T13:42:00-07:00",
+      "level": "approve",
+      "kind": "Order",
+      "order": "BS-2",
+      "bill": null,
+      "title": "Claude asks to order 100 kg of sugar from BakeSupply, $95.00",
+      "detail": "Sugar runs out in about 2 days. October's supplies budget has $8 left, so it needs your passkey.",
+      "steps": [
+        "s4:log:1",
+        "s4:log:2",
+        "s4:log:3",
+        "chk_bs_3"
       ]
     },
     {
@@ -469,6 +541,43 @@
       "result": "asked",
       "order": "PO-2041",
       "note": "Over the $500 limit, so it needs your passkey. Balance stays above $2,000."
+    },
+    {
+      "id": "s4:log:1",
+      "at": "2026-10-25T13:40:00-07:00",
+      "actor": "claude",
+      "text": "Checked the bakery's stock: sugar is down to 12 kg, about 2 days at your usual pace",
+      "call": "inventory · sugar=12 kg · uses 6 kg/day",
+      "result": "read",
+      "order": "BS-2"
+    },
+    {
+      "id": "s4:log:2",
+      "at": "2026-10-25T13:41:00-07:00",
+      "actor": "claude",
+      "text": "Looked up BakeSupply's ingredients and stock",
+      "call": "bakesupply.list_ingredients · 4 ingredients",
+      "result": "read",
+      "order": "BS-2"
+    },
+    {
+      "id": "s4:log:3",
+      "at": "2026-10-25T13:41:00-07:00",
+      "actor": "claude",
+      "text": "Got a price for 100 kg of sugar: $0.95 per kg, in stock",
+      "call": "bakesupply.get_price · ingredient=sugar · quantity=100 · total_cents=9500",
+      "result": "read",
+      "order": "BS-2"
+    },
+    {
+      "id": "chk_bs_3",
+      "at": "2026-10-25T13:42:00-07:00",
+      "actor": "checks",
+      "text": "Checked the sugar order against your order and budget policies",
+      "call": "check_policy · supplier=BakeSupply · total=$95.00",
+      "result": "asked",
+      "order": "BS-2",
+      "note": "Approved supplier, but October's supplies budget has $8 left. This order would bring it to $3,087 of $3,000, so it needs your passkey."
     },
     {
       "id": "s2:log:5",

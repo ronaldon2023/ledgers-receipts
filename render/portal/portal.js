@@ -213,6 +213,7 @@ Portal.header = function (title, sub) {
 Portal.dashboard = function (d, ui) {
   var esc = Portal.esc, f = d.feed, g = f.glance, cards = Portal.attention(f, ui);
   var pct = Math.floor(g.budget.used_cents / g.budget.limit_cents * 100); // round down: 99.7% is not "100% used"
+  var waiting = cards.filter(function (c) { return c.level === "approve"; });
   var h = Portal.header("Good afternoon, " + f.owner, Portal.day(f.as_of) + " · " + Portal.time(f.as_of) + " · Claude is working on your bills");
   h += '<section aria-labelledby="attnh"><div class="sh"><h2 id="attnh">Needs your attention</h2><span>' +
     (cards.length ? cards.length + (cards.length === 1 ? " item" : " items") : "Nothing waiting") + '</span></div>';
@@ -224,7 +225,8 @@ Portal.dashboard = function (d, ui) {
     '<span class="d">' + pct + '% used · ' + esc(Portal.dollars(g.budget.limit_cents - g.budget.used_cents)) + ' left</span></div>' +
     '<div class="tile"><span class="k">Operating balance</span><span class="n">' + esc(Portal.dollars(g.balance.balance_cents)) + '</span>' +
     '<span class="d">Floor ' + esc(Portal.dollars(g.balance.floor_cents)) + ' · ' + esc(g.balance.note) + '</span></div>' +
-    '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + esc(g.waiting.count) + '</span><span class="d">' + esc(g.waiting.note) + '</span></div>' +
+    '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + waiting.length + '</span><span class="d">' +
+    (waiting.length ? waiting.map(function (c) { return esc(c.short || c.title); }).join("<br>") : "No approvals waiting") + '</span></div>' +
     '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span>' +
     '<span class="d">' + esc(g.run.blocked) + ' blocked by the guard · open any alert to see its steps</span></div></div></section>';
   return h + Portal.feedHtml(f, ui);
@@ -359,11 +361,10 @@ if (typeof document !== "undefined") (function () {
     var act = t.getAttribute("data-act");
     if (act === "reset") { ui.dismissed = {}; ui.filter = "all"; return go("pending"); }
     if (act === "cancel") return set({ confirming: null });
-    if (act === "passkey" && card && ui.confirming) return go(card.actions[ui.confirming.action].next);
     if (!card) return;
-    var i = +t.getAttribute("data-action"), a = card.actions[i];
-    if (a.confirm) set({ confirming: { card: card.id, action: i } });
-    else if (a.dismiss) { ui.dismissed[card.id] = true; set({}); }
+    var i = act === "passkey" && ui.confirming ? ui.confirming.action : +t.getAttribute("data-action"), a = card.actions[i];
+    if (a.confirm && act !== "passkey") return set({ confirming: { card: card.id, action: i } });
+    if (a.dismiss) { ui.dismissed[card.id] = true; set({ confirming: null }); }
     else if (a.next) go(a.next);
   });
   window.addEventListener("hashchange", function () { render(); window.scrollTo(0, 0); });

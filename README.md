@@ -13,12 +13,34 @@ Design mock with sample data (see `docs/mock/`). Feedback welcome.
 
 ![Receipt mock for Sweet Rose Bakery: an ISSUES FOUND verdict, a grid showing where each problem was caught, and the list of checks](docs/mock/receipt.png)
 
-## Quick start
+## Team setup (about 5 minutes)
 
-```sh
-./setup.sh      # Python 3.12 required
-make test
-```
+You need Python 3.12 and git. On Windows, use WSL.
+
+1. Accept the GitHub invite, then clone and set up:
+   ```sh
+   git clone https://github.com/ronaldon2023/ledgers-receipts.git
+   cd ledgers-receipts
+   ./setup.sh        # virtualenv, dependencies, spaCy model, commit-size hook
+   ```
+2. Create your local database:
+   ```sh
+   make reset        # builds bakery.db with the demo data; rerun anytime for a clean copy
+   ```
+   The database is not in GitHub. Everyone generates the same one from `bakery/seed.py`.
+3. Check everything works:
+   ```sh
+   make test         # all tests should pass
+   ```
+4. Start Claude from inside this folder so it loads the team rules in `CLAUDE.md`:
+   ```sh
+   claude
+   ```
+5. Read your section of `docs/PLAN.md` before kickoff.
+
+Team rules: stay in your own folder (see the table in `CLAUDE.md`), keep commits under
+300 lines (the git hook enforces it), and never commit API keys. `ANTHROPIC_API_KEY`
+belongs in your environment only.
 
 ## Layout
 

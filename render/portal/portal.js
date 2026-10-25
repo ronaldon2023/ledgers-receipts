@@ -179,14 +179,14 @@ Portal.groups = function (feed, byOrder) {
   return out;
 };
 Portal.feedHtml = function (feed, ui) {
-  var esc = Portal.esc, byOrd = ui.feedView === "order";
+  var esc = Portal.esc, byOrd = ui.feedView !== "time"; // By order is the default
   var h = '<section aria-label="AI agent activities"><div class="sh"><div class="filters" role="group" aria-label="Filter">';
   Portal.FILTERS.forEach(function (f) {
     h += '<button type="button" class="chip" data-filter="' + f[0] + '" aria-pressed="' + (ui.filter === f[0]) + '">' + esc(f[1]) + '</button>';
   });
   h += '</div></div><div class="feedbar"><div class="viewtoggle" role="group" aria-label="Group activities">' +
-    '<button type="button" class="seg" data-feedview="time" aria-pressed="' + !byOrd + '">By time</button>' +
-    '<button type="button" class="seg" data-feedview="order" aria-pressed="' + byOrd + '">By order</button></div>' +
+    '<button type="button" class="seg" data-feedview="order" aria-pressed="' + byOrd + '">By order</button>' +
+    '<button type="button" class="seg" data-feedview="time" aria-pressed="' + !byOrd + '">By time</button></div>' +
     '</div><div class="feed">';
   var any = false;
   Portal.groups(feed, byOrd).forEach(function (g) {
@@ -215,7 +215,7 @@ Portal.dashboard = function (d, ui) {
   var esc = Portal.esc, f = d.feed, g = f.glance, cards = Portal.attention(f, ui);
   var pct = Math.floor(g.budget.used_cents / g.budget.limit_cents * 100); // round down: 99.7% is not "100% used"
   var waiting = cards.filter(function (c) { return c.level === "approve"; });
-  var h = Portal.header("Good afternoon, " + f.owner, Portal.day(f.as_of) + " · " + Portal.time(f.as_of) + " · Claude is working on your bills");
+  var h = Portal.header("Good afternoon, " + f.owner);
   h += '<section aria-labelledby="attnh"><div class="sh"><h2 id="attnh">Needs your attention</h2><span>' +
     (cards.length ? cards.length + (cards.length === 1 ? " item" : " items") : "Nothing waiting") + '</span></div>';
   h += cards.length ? '<div class="attn">' + cards.map(function (c) { return Portal.card(f, c, ui); }).join("") + '</div>'
@@ -373,7 +373,7 @@ Portal.page = function (d, ui) {
   var side = brand +
     [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
       return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
-    }).join("") + '<div class="meta"><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
+    }).join("") + '<div class="meta"><span>' + esc(Portal.day(d.feed.as_of) + " · " + Portal.time(d.feed.as_of)) + '</span><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
     '<span>Signed in as ' + esc(d.feed.owner) + ' · passkey</span><button type="button" data-onb="again">Run setup again</button></div>';
   return { side: side, main: main };
 };
@@ -381,7 +381,7 @@ Portal.page = function (d, ui) {
 /* ---------- browser start-up: load the JSON, check it again every second, handle clicks ---------- */
 if (typeof document !== "undefined") (function () {
   var KEY = "receipts-portal-v3", STATES = ["pending", "stopped", "paid", "declined"];
-  var ui = { state: "pending", filter: "all", feedView: "time", confirming: null, dismissed: {}, onboarded: false, onboard: { step: 0 } };
+  var ui = { state: "pending", filter: "all", feedView: "order", confirming: null, dismissed: {}, onboarded: false, onboard: { step: 0 } };
   var data = null, last = "", side = document.getElementById("side"), app = document.getElementById("app");
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "null");

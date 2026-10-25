@@ -305,3 +305,16 @@ def test_onboarding_rules_default_from_policies_and_escape_input() -> None:
     done = onboarding(3, rules)["main"] + onboarding(2, rules)["main"]
     assert "<script" not in done
     assert "Anything over $500" in done
+
+
+@needs_node
+def test_by_order_is_first_and_default_and_time_moved_to_sidebar() -> None:
+    out = run([{"data": data("stopped"), "ui": {"view": "activities", "filter": "all"}}])[0]
+    html = out["main"]
+    assert html.index('data-feedview="order"') < html.index('data-feedview="time"')
+    assert 'data-feedview="order" aria-pressed="true"' in html
+    assert "Not tied to an order" in html
+    dash = page(data("stopped"))
+    assert "Claude is working on your bills" not in dash
+    meta = out["side"][out["side"].index('class="meta"') :]
+    assert meta.index("Sun 25 Oct · 2:02 PM") < meta.index("Agent: Claude")

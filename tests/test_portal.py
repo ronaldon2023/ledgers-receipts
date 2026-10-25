@@ -393,9 +393,9 @@ def test_policies_and_rules_follow_the_onboarding_file() -> None:
     [
         None,
         {},
-        {"payment_rules": {"approval_threshold_cents": "250", "monthly_budget_cents": "1"}},
-        {"payment_rules": {"approval_threshold_cents": 25050.5, "monthly_budget_cents": 1e300}},
-        {"payment_rules": {"approval_threshold_cents": -100, "approved_suppliers": [{"name": 7}]}},
+        {"payment_rules": {"approval_threshold_cents": None, "monthly_budget_cents": "1"}},
+        {"payment_rules": {"monthly_budget_cents": 1e300, "approved_suppliers": []}},
+        {"payment_rules": {"approved_suppliers": [{"name": 7}]}},
     ],
 )
 def test_missing_or_odd_onboarding_answers_keep_the_policies_file(answers: object) -> None:
@@ -418,6 +418,16 @@ def test_no_budget_limit_from_onboarding_shows_as_no_limit() -> None:
     saved |= {"budget_cents": None, "no_budget": True}
     summary = onboarding(3, saved)["main"]
     assert "No monthly budget limit" in summary and "$3,000 a month" not in summary
+
+
+@needs_node
+@pytest.mark.parametrize("bad", ["250", 25050.5, -100, 1e300, True])
+def test_an_invalid_saved_threshold_shows_every_payment_asks(bad: object) -> None:
+    # The approval hook (#15) asks about every payment when the saved amount isn't valid.
+    d = data("pending")
+    d["onboarding"] = {"payment_rules": {"approval_threshold_cents": bad}}
+    policies = page(d, "policies")
+    assert "Every payment needs owner approval" in policies and "$500" not in policies
 
 
 @needs_node

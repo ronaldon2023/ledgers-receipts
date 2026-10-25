@@ -326,6 +326,8 @@ Portal.onboardedRules = function (onb) {
   var r = ((onb || {}).payment_rules) || {}, out = {};
   var cents = function (v) { return Number.isSafeInteger(v) && v >= 0; }; // money is integer cents
   if (cents(r.approval_threshold_cents)) out.threshold_cents = r.approval_threshold_cents;
+  // A saved amount that isn't valid: the approval hook then asks about every payment, so say so.
+  else if (r.approval_threshold_cents != null) out.every_payment = true;
   if (cents(r.monthly_budget_cents)) out.budget_cents = r.monthly_budget_cents;
   if (r.monthly_budget_cents === null) out.no_budget = true; // the owner said "no limit"
   if (Array.isArray(r.approved_suppliers)) {
@@ -342,7 +344,8 @@ Portal.withOnboarding = function (pol, onb) {
     return c % 100 ? "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2 }) : Portal.dollars(c);
   };
   var over = {
-    "POL-PAY-THRESHOLD": r.threshold_cents == null ? null : { limit_cents: r.threshold_cents,
+    "POL-PAY-THRESHOLD": r.every_payment ? { limit_cents: 0, title: "Every payment needs owner approval", setting: "Every payment" }
+      : r.threshold_cents == null ? null : { limit_cents: r.threshold_cents,
       title: "Payments over " + $(r.threshold_cents) + " need owner approval", setting: $(r.threshold_cents) + " limit" },
     "POL-BUDGET-MONTHLY": r.no_budget ? { setting: "No limit" }
       : r.budget_cents == null ? null : { limit_cents: r.budget_cents, setting: $(r.budget_cents) + " / month" },
@@ -500,7 +503,8 @@ if (typeof document !== "undefined") (function () {
     if (act === "back") o.step = Math.max(0, step - 1);
     else if (act === "rules") {
       var dollars = function (id) { var v = Math.round(+document.getElementById(id).value); return (v > 0 ? v : 0) * 100; };
-      var noBudget = document.getElementById("r-budget").value.trim() === ""; // empty box: no limit
+      var box = document.getElementById("r-budget"); // empty box: no limit; unreadable text is not empty
+      var noBudget = box.value.trim() === "" && !(box.validity && box.validity.badInput);
       o.rules = { suppliers: document.getElementById("r-suppliers").value.trim(), threshold_cents: dollars("r-threshold"),
         budget_cents: noBudget ? null : dollars("r-budget"), no_budget: noBudget, floor_cents: dollars("r-floor") };
       o.step = 3;

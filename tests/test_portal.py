@@ -25,6 +25,8 @@ STATES = ["pending", "stopped", "paid", "declined"]
 SCHEMA = json.loads((ROOT / "docs" / "mock" / "order_receipt.schema.json").read_text())
 SAMPLE = json.loads((ROOT / "docs" / "mock" / "order_receipt.json").read_text())
 XSS = "<script>alert(1)</script>"
+# The owner has clicked "Start check" on the weekly inventory card.
+CHECKED = {"ran": {"att_inventory": True}, "dismissed": {"att_inventory": True}}
 
 NO_NODE = shutil.which("node") is None
 if NO_NODE:
@@ -186,7 +188,7 @@ def test_unknown_status_renders_as_unknown() -> None:
     d = data("stopped")
     d["receipt"]["checks"][0]["status"] = "constructor"
     d["receipt"]["verdict"] = "SOMETHING_NEW"
-    d["feed"]["events"][0]["level"] = "brand_new"
+    next(e for e in d["feed"]["events"] if e["id"] == "ev_mismatch")["level"] = "brand_new"
     html = page(d, "order/PO-2041") + page(d, "activities")
     assert html.count(">Unknown<") >= 3
 
@@ -195,7 +197,7 @@ def test_unknown_status_renders_as_unknown() -> None:
 def test_data_is_escaped() -> None:
     d = copy.deepcopy(data("stopped"))
     stopped = next(c for c in d["feed"]["attention"] if c["id"] == "att_stopped")
-    d["feed"]["events"][0]["title"] = XSS
+    next(e for e in d["feed"]["events"] if e["id"] == "ev_mismatch")["title"] = XSS
     stopped["quote"]["text"] = XSS
     d["feed"]["steps"][0]["quote"] = XSS
     d["receipt"]["checks"][0]["title"] = XSS
@@ -220,7 +222,7 @@ def test_bank_numbers_show_last_four_only() -> None:
 
 @needs_node
 def test_by_order_groups_each_order() -> None:
-    html = page(data("stopped"), "activities", feedView="order")
+    html = page(data("stopped"), "activities", feedView="order", **CHECKED)
     po, restock, other = (
         html.index(s) for s in ["Order PO-2041", "Order PO-2042", "Not tied to an order"]
     )
@@ -262,12 +264,12 @@ def test_stopped_trail_shows_pay_bill_then_guard() -> None:
 
 @needs_node
 def test_restock_order_card_needs_approval() -> None:
-    html = page(data("pending"))
+    html = page(data("pending"), **CHECKED)
     start = html.index("Order 3 bags of cane sugar from Flour Co")
     card = html[html.rindex("<article", 0, start) : html.index("</article>", start)]
     assert 'class="card ask"' in card
     assert 'class="checks"' not in card
-    assert "Steps Claude took (4)" in card
+    assert "Steps Claude took (5)" in card
     assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
     assert "Approve with passkey" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
@@ -458,7 +460,8 @@ def _with_status(status: str) -> dict:
 @needs_node
 def test_glance_comes_before_attention() -> None:
     html = page(data("pending"))
-    assert html.index("At a glance") < html.index("Needs your attention")
+    assert html.index('class="glance"') < html.index("Needs your attention")
+    assert ">At a glance<" not in html
 
 
 @needs_node
@@ -486,3 +489,46 @@ def test_demo_buttons_sit_in_sidebar_above_the_date() -> None:
     )
     assert "Start onboarding" not in out["main"] and "Restart demo" not in out["main"]
     assert "Run setup again" not in side
+
+
+@needs_node
+def test_three_cards_and_start_check_shows_its_result() -> None:
+    before = page(data("pending"))
+    attn = before[before.index("Needs your attention") :]
+    assert attn.count("<article ") == 3
+    order = [
+        attn.index(t)
+        for t in [
+            "Start this week&#39;s inventory check",
+            "Order 3 bags of cane sugar from Flour Co",
+            "Pay Flour Co $800.00",
+        ]
+    ]
+    assert order == sorted(order)
+    assert ">Start check<" in attn and ">Not now<" in attn
+    assert "Inventory check finished" not in before
+    after = page(data("pending"), **CHECKED)
+    attn = after[after.index("Needs your attention") :]
+    assert "Start this week&#39;s inventory check" not in attn
+    assert attn.index("Inventory check finished") < attn.index("Order 3 bags of cane sugar")
+    assert "Steps Claude took (5)" in attn[: attn.index("Order 3 bags")]
+
+
+@needs_node
+def test_approving_the_restock_shows_every_bakesupply_tool() -> None:
+    ran = {"att_inventory": True, "att_order": True}
+    html = page(data("pending"), "order/PO-2042", ran=ran, dismissed=ran)
+    tools = ["list_products", "get_price", "place_order", "list_orders"]
+    positions = [html.index("bakesupply." + t) for t in tools]
+    assert positions == sorted(positions)
+    acts = page(data("pending"), "activities", ran=ran, dismissed=ran)
+    assert "Ordered 3 bags of cane sugar from Flour Co, $120.00" in acts
+    assert '<span class="b b-mute">Approved</span>' in acts
+
+
+@needs_node
+def test_declining_the_restock_places_nothing() -> None:
+    d = {"att_inventory": True, "att_order": True}
+    html = page(data("pending"), "activities", ran={"att_inventory": True}, dismissed=d)
+    assert "bakesupply.place_order" not in html
+    assert "You declined" in html

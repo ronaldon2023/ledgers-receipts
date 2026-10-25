@@ -1,6 +1,6 @@
 # Owner portal
 
-The website the bakery owner uses: **Dashboard** (at a glance, needs your attention),
+The website the bakery owner uses: **Dashboard** (summary tiles, needs your attention),
 **Activities** (everything Claude did, by time or by order) and **Policies**, plus one
 **Order receipt** page per order.
 Claude does the work; plain code decides every status. The portal only renders JSON.
@@ -21,9 +21,11 @@ Add `?state=pending|stopped|paid|declined` to the URL to jump to a demo state.
 | `policies.json` | Policies page. ids, kinds, titles and limits match `POLICIES` in `bakery/seed.py` |
 
 Receipts are validated against `docs/mock/order_receipt.schema.json` on main, so a schema
-change breaks `tests/test_portal.py` instead of drifting. The proposed restock order
-(`PO-2042`, cane sugar) is priced with BakeSupply's MCP tools (`list_products`, `get_price`),
-which play Flour Co. It has no receipt until it is submitted.
+change breaks `tests/test_portal.py` instead of drifting. The dashboard's **weekly
+inventory check** card shows off BakeSupply's MCP server (which plays Flour Co): Start check
+reveals `list_products` and `get_price` steps and a restock proposal (`PO-2042`, cane sugar);
+approving it adds `place_order` and `list_orders`. The run is simulated from fixture data:
+items tagged `requires` stay hidden until the owner clicks the card that produces them.
 
 ## Rules this code keeps
 

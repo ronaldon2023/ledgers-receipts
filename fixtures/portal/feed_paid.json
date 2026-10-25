@@ -18,7 +18,7 @@
       "note": "after paying BILL-07"
     },
     "run": {
-      "steps": 18,
+      "steps": 19,
       "blocked": 2
     }
   },
@@ -62,7 +62,8 @@
     {
       "order_number": "PO-2042",
       "seller": "Flour Co",
-      "summary": "3 bags of cane sugar (proposed)",
+      "resolves": "att_order",
+      "summary": "3 bags of cane sugar",
       "total_cents": 12000,
       "placed_at": "2026-10-25T13:42:00-07:00",
       "seller_email": "billing@flourco.example",
@@ -85,10 +86,82 @@
           "label": "Waiting on you",
           "level": "approve"
         }
-      ]
+      ],
+      "when_approved": {
+        "progress": [
+          {
+            "label": "Ordered",
+            "level": "done"
+          },
+          {
+            "label": "Found in Flour Co's orders",
+            "level": "done"
+          },
+          {
+            "label": "No bill yet",
+            "level": "info"
+          }
+        ],
+        "receipt_note": "Ordered as Flour Co order ord_1. Its receipt isn't part of this demo yet."
+      },
+      "when_declined": {
+        "progress": [
+          {
+            "label": "Proposed by Claude",
+            "level": "done"
+          },
+          {
+            "label": "You declined",
+            "level": "declined"
+          }
+        ],
+        "receipt_note": "You declined this order, so nothing was placed."
+      }
     }
   ],
   "attention": [
+    {
+      "id": "att_inventory",
+      "level": "task",
+      "context": "Weekly check",
+      "at": "2026-10-25T13:40:00-07:00",
+      "title": "Start this week's inventory check",
+      "subtitle": "Claude counts your stock and checks Flour Co's prices and stock through the BakeSupply connection. It asks you before ordering anything. Last run Sun 18 Oct.",
+      "actions": [
+        {
+          "label": "Start check",
+          "primary": true,
+          "run": true
+        },
+        {
+          "label": "Not now",
+          "dismiss": true
+        }
+      ],
+      "steps": []
+    },
+    {
+      "id": "att_inventory_done",
+      "requires": "att_inventory",
+      "level": "done",
+      "context": "Weekly check",
+      "at": "2026-10-25T14:05:00-07:00",
+      "title": "Inventory check finished",
+      "body": "Flour is fine for about 2 weeks. Cane sugar is low, and its order is already waiting on you. Nothing else needs ordering this week.",
+      "actions": [
+        {
+          "label": "Got it",
+          "dismiss": true
+        }
+      ],
+      "steps": [
+        "s4:log:1",
+        "s4:log:2",
+        "s4:log:3",
+        "s4:log:4",
+        "s4:log:5"
+      ]
+    },
     {
       "id": "att_order",
       "level": "approve",
@@ -102,7 +175,7 @@
         {
           "label": "Approve with passkey",
           "primary": true,
-          "dismiss": true,
+          "run": true,
           "confirm": "Approve ordering 3 bags of cane sugar from Flour Co for $120.00."
         },
         {
@@ -115,6 +188,7 @@
         }
       ],
       "steps": [
+        "s3:start",
         "s3:log:1",
         "s3:log:2",
         "s3:log:3",
@@ -153,6 +227,24 @@
     }
   ],
   "events": [
+    {
+      "id": "ev_inventory_done",
+      "at": "2026-10-25T14:05:00-07:00",
+      "level": "done",
+      "kind": "Inventory",
+      "order": null,
+      "bill": null,
+      "title": "Weekly inventory check finished",
+      "detail": "Flour is fine for about 2 weeks. Nothing new to order.",
+      "steps": [
+        "s4:log:1",
+        "s4:log:2",
+        "s4:log:3",
+        "s4:log:4",
+        "s4:log:5"
+      ],
+      "requires": "att_inventory"
+    },
     {
       "id": "ev_paid",
       "at": "2026-10-25T14:05:00-07:00",
@@ -257,6 +349,22 @@
       ]
     },
     {
+      "id": "ev_restock_done",
+      "at": "2026-10-25T13:44:00-07:00",
+      "level": "done",
+      "kind": "Order",
+      "order": "PO-2042",
+      "bill": null,
+      "title": "Ordered 3 bags of cane sugar from Flour Co, $120.00",
+      "detail": "You approved it with your passkey. Flour Co order ord_1.",
+      "steps": [
+        "s3:log:5",
+        "s3:log:6",
+        "s3:log:7"
+      ],
+      "requires": "att_order"
+    },
+    {
       "id": "ev_restock_ask",
       "at": "2026-10-25T13:42:00-07:00",
       "level": "approve",
@@ -266,11 +374,19 @@
       "title": "Claude asks to order 3 bags of cane sugar from Flour Co, $120.00",
       "detail": "Cane sugar runs out in about 2 days. October's supplies budget has $60 left, so it needs your passkey.",
       "steps": [
+        "s3:start",
         "s3:log:1",
         "s3:log:2",
         "s3:log:3",
         "s3:log:4"
-      ]
+      ],
+      "resolves": "att_order",
+      "when_approved": {
+        "level": "resolved"
+      },
+      "when_declined": {
+        "level": "declined"
+      }
     },
     {
       "id": "ev_bill",
@@ -364,10 +480,19 @@
       "who": "Flour Co"
     },
     {
+      "id": "s3:start",
+      "at": "2026-10-25T13:40:00-07:00",
+      "actor": "trigger",
+      "text": "Started the daily low-stock check",
+      "call": "session s3 · daily schedule",
+      "result": "received",
+      "order": "PO-2042"
+    },
+    {
       "id": "s3:log:1",
       "at": "2026-10-25T13:40:00-07:00",
       "actor": "claude",
-      "text": "Checked the bakery's stock: cane sugar is down to 1 bag, about 2 days at your usual pace",
+      "text": "Cane sugar is down to 1 bag, about 2 days at your usual pace",
       "call": "inventory · SUG-CN-50 · 1 bag left",
       "result": "read",
       "order": "PO-2042"
@@ -376,7 +501,7 @@
       "id": "s3:log:2",
       "at": "2026-10-25T13:41:00-07:00",
       "actor": "claude",
-      "text": "Looked up Flour Co's products and stock",
+      "text": "Looked up Flour Co's products and stock through the BakeSupply connection",
       "call": "bakesupply.list_products · 3 products",
       "result": "read",
       "order": "PO-2042"
@@ -399,6 +524,36 @@
       "result": "asked",
       "order": "PO-2042",
       "note": "Approved supplier, but October's supplies budget has $60 left. This order would bring it to $3,060 of $3,000, so it needs your passkey."
+    },
+    {
+      "id": "s3:log:5",
+      "at": "2026-10-25T13:43:00-07:00",
+      "actor": "you",
+      "text": "Approved ordering 3 bags of cane sugar, $120.00",
+      "call": "owner_approval · method=passkey",
+      "result": "approved",
+      "order": "PO-2042",
+      "requires": "att_order"
+    },
+    {
+      "id": "s3:log:6",
+      "at": "2026-10-25T13:43:00-07:00",
+      "actor": "claude",
+      "text": "Ordered 3 bags of cane sugar from Flour Co",
+      "call": "bakesupply.place_order · sku=SUG-CN-50 · quantity=3 · id=ord_1",
+      "result": "done",
+      "order": "PO-2042",
+      "requires": "att_order"
+    },
+    {
+      "id": "s3:log:7",
+      "at": "2026-10-25T13:44:00-07:00",
+      "actor": "verifier",
+      "text": "Found ord_1 in Flour Co's orders: 3 × $40.00 = $120.00",
+      "call": "bakesupply.list_orders · ord_1",
+      "result": "passed",
+      "order": "PO-2042",
+      "requires": "att_order"
     },
     {
       "id": "s2:start",
@@ -531,6 +686,56 @@
       "call": "payments table · pay_1",
       "result": "passed",
       "order": "PO-2041"
+    },
+    {
+      "id": "s4:log:1",
+      "at": "2026-10-25T14:05:00-07:00",
+      "actor": "claude",
+      "text": "Counted all the bakery's stock for the weekly check",
+      "call": "inventory · 3 items counted",
+      "result": "read",
+      "order": null,
+      "requires": "att_inventory"
+    },
+    {
+      "id": "s4:log:2",
+      "at": "2026-10-25T14:05:00-07:00",
+      "actor": "claude",
+      "text": "Checked Flour Co's products and stock through BakeSupply",
+      "call": "bakesupply.list_products · 3 products",
+      "result": "read",
+      "order": null,
+      "requires": "att_inventory"
+    },
+    {
+      "id": "s4:log:3",
+      "at": "2026-10-25T14:05:00-07:00",
+      "actor": "claude",
+      "text": "All-purpose and bread flour: enough for about 2 weeks",
+      "call": "inventory · FLR-AP-50 · FLR-BR-50",
+      "result": "read",
+      "order": null,
+      "requires": "att_inventory"
+    },
+    {
+      "id": "s4:log:4",
+      "at": "2026-10-25T14:05:00-07:00",
+      "actor": "claude",
+      "text": "Cane sugar is low, and its order is already waiting on you",
+      "call": "inventory · SUG-CN-50 · see PO-2042",
+      "result": "read",
+      "order": null,
+      "requires": "att_inventory"
+    },
+    {
+      "id": "s4:log:5",
+      "at": "2026-10-25T14:05:00-07:00",
+      "actor": "checks",
+      "text": "Nothing else needs ordering this week",
+      "call": "check_policy · no new orders",
+      "result": "passed",
+      "order": null,
+      "requires": "att_inventory"
     }
   ]
 }

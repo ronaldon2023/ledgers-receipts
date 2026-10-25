@@ -19,34 +19,62 @@ for later. Payments through PayPal, Square or Stripe aren't checked.
 - Drop any question below that one of these already answers. If a round has nothing left to
   ask, skip it.
 
+## Read what the bakery database already holds
+
+Before Round 1, run the script that sits next to this file. It opens `bakery.db` read-only and
+prints one JSON object:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/read_bakery.py"
+```
+
+`${CLAUDE_SKILL_DIR}` is this skill's folder (the "Base directory for this skill" shown when it
+loaded). The output is `{"vendors": [{"name", "email_domain", "account_last4"}],
+"approval_threshold_cents", "monthly_budget_cents"}`, or `{"error": "..."}` when there's no
+database or it can't be read. It never prints a full account number. Round 1 uses its approval
+threshold and Round 2 its suppliers and budget.
+
 ## Round 1: tools and approval amount (one AskUserQuestion call, up to four questions)
 
 Ask the remaining questions in a single AskUserQuestion call. List the tool options
 alphabetically; the owner can pick "Other" to name a different tool or type their own amount.
 Set `multiSelect: true` on Payments, since a business can use more than one; the others are
-single choice. Approval lists its options in the order shown, with $500 first as the
-recommendation.
+single choice. Approval lists the recommendation first, then $1,000 and $2,500. The
+recommendation is the script's `approval_threshold_cents` in dollars, as "$X (Recommended)";
+when the script gave an error or no threshold, it's "$500 (Recommended)". If X is $1,000 or
+$2,500, don't list that amount a second time.
 
 | Header | Question | Options |
 |---|---|---|
 | Bookkeeping | Which bookkeeping software do you use? | QuickBooks · Xero · Zoho Books · None, I use a spreadsheet |
 | Payments | How do you pay suppliers or take payments? | PayPal · Square · Stripe · Bank transfer only |
 | Email | Where do supplier invoices arrive? | Gmail · Microsoft 365 (Outlook) |
-| Approval | Bakery bill payments above what amount should wait for your yes? | $500 (Recommended) · $1,000 · $2,500 |
+| Approval | Bakery bill payments above what amount should wait for your yes? | $X (Recommended) · $1,000 · $2,500 |
 
 These cover the demo flow: an order, the supplier's invoice by email, and the payment. Don't walk
 through every tool the Small Business plugin supports. If the owner names a tool that isn't
 connected yet, note it and say that `smb-onboard` can connect it later.
 
-## Round 2: payment rules (one message)
+## Round 2: confirm the payment rules (one message)
 
-Ask these together in one plain message, and accept short answers. Start the message with:
-"For bank accounts, type only the last 4 digits, never the full number."
+Send one plain message, and accept short answers. Start it with: "For bank accounts, type only
+the last 4 digits, never the full number."
 
-1. What's the name of your business? (Skip if you already know it.)
-2. What's your monthly budget for supplies? "No limit" is fine.
-3. Which suppliers do you pay? For each one: the name, their email domain, and the **last 4
-   digits** of the bank account you pay them at.
+When the script found suppliers or a budget, show them and ask the owner to confirm or correct
+them, for example:
+
+> Your bakery records list these suppliers: **Flour Co**, invoices from `flourco.example`, paid
+> to the account ending 4471. Your monthly supplies budget is **$3,000**. Is that right? Tell me
+> anything to change, add or remove.
+
+Ask outright only: What's the name of your business? (Skip if you already know it.)
+
+If the script printed an error, found no suppliers, or found no budget, ask for what's missing
+the way you would with no database:
+
+- What's your monthly budget for supplies? "No limit" is fine.
+- Which suppliers do you pay? For each one: the name, their email domain, and the **last 4
+  digits** of the bank account you pay them at.
 
 Never ask for, repeat or save a full account, card or IBAN number. If the owner types one, keep
 only the last 4 digits, tell them you did, and say the full number stays in this chat's history.
@@ -60,6 +88,8 @@ only the last 4 digits, tell them you did, and say the full number stays in this
   `50000`). An amount typed under "Other" is converted the same way; if it isn't a dollar
   amount, ask again.
 - "No limit" for the budget is stored as `null` in `monthly_budget_cents`.
+- Suppliers and the budget the owner confirmed from the database are stored with any
+  corrections applied, in the same fields as typed answers.
 
 ## Save the answers
 

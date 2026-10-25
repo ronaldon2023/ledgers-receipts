@@ -6,9 +6,9 @@ description: Set up Receipts for a small business. Asks the owner which bookkeep
 # Receipts onboarding
 
 Ask the owner a few questions and save the answers to `receipts-onboarding.json` in the project
-folder. Today the file is a record for later: no check reads it yet, and where payment rules
-finally live is still being decided. Say that to the owner in one sentence before you start, so
-they know why you're asking.
+folder. Today only the approval amount is used: payments over it ask for the owner's yes. The
+rest is a record for later, while the team decides where payment rules finally live. Say that to
+the owner in one sentence before you start, so they know why you're asking.
 
 ## Before you ask
 
@@ -80,5 +80,5 @@ integer cents, unknown values as `null`):
 ```
 
 End by telling the owner, in plain words, what was saved. Be exact about what is enforced today:
-payments over $1,000 ask for their approval, whatever threshold they chose. The threshold they
-gave is saved for later and not used yet.
+any payment over the approval amount they chose stops and asks for their yes before it goes
+out. The budget and supplier list are saved for later and not checked yet.

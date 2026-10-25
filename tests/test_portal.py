@@ -277,8 +277,7 @@ def test_restock_order_card_needs_approval() -> None:
     assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
     assert ">Approve<" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
-    assert tile.startswith('Waiting on you</span><span class="n">2<')
-    assert "Sugar order, $120.00" in tile
+    assert tile.startswith('Waiting on you</span><span class="n">2</span></div>')
 
 
 @needs_node
@@ -293,7 +292,7 @@ def test_activities_have_their_own_page() -> None:
     dash, acts = page(data("stopped")), page(data("stopped"), "activities")
     assert 'class="feed"' not in dash and 'href="#activities"' in dash
     assert 'class="feed"' in acts and "Needs your attention" not in acts
-    assert '<a href="#activities" aria-current="page">Activities</a>' in acts
+    assert 'href="#activities" title="Activities" aria-current="page">' in acts
 
 
 @needs_node
@@ -453,9 +452,8 @@ def test_by_order_is_first_and_default_and_time_moved_to_sidebar() -> None:
 @needs_node
 def test_every_page_has_a_start_onboarding_button() -> None:
     for view in ["dashboard", "activities", "policies", "order/PO-2041"]:
-        assert (
-            '<button type="button" class="btn" data-onb="again">Start onboarding</button>'
-            in page(data("stopped"), view)
+        assert 'class="btn" data-onb="again" title="Start onboarding">' in page(
+            data("stopped"), view
         )
 
 
@@ -648,7 +646,7 @@ def test_order_page_details_from_review() -> None:
     assert "· proposed Sun 25 Oct" in proposed and "· placed" not in proposed
     receipt = page(data("stopped"), "order/PO-2041", **{"from": "activities"})
     assert '<details class="steps"><summary>Steps Claude took on this order (' in receipt
-    assert '<a href="#activities" aria-current="page">' in receipt
+    assert 'href="#activities" title="Activities" aria-current="page">' in receipt
 
 
 @needs_node
@@ -668,3 +666,48 @@ def test_passkey_only_on_onboarding_sign_in() -> None:
 def test_balance_matches_the_seed() -> None:
     assert ">$4,800<" in page(data("pending"))
     assert ">$4,000<" in page(data("paid"))
+
+
+@needs_node
+def test_cleaned_up_glance_tiles_and_activities_bar() -> None:
+    html = page(data("pending"), **CHECKED)
+    assert "of $3,000 · 98% used</span></span>" in html
+    assert "Sugar order, $120.00" not in html and "BILL-07, $800.00" not in html
+    assert "blocked by the guard" not in html and "see all activities" not in html
+    acts = page(data("stopped"), "activities")
+    row = acts[acts.index('<div class="sh feedtop">') :]
+    row = row[: row.index('<div class="feed">')]
+    assert row.index('class="filters"') < row.index('class="viewtoggle"')
+    assert 'class="feedbar"' not in acts
+
+
+@needs_node
+def test_sidebar_is_collapsible() -> None:
+    side = run([{"data": data("pending"), "ui": {"view": "dashboard", "filter": "all"}}])[0]["side"]
+    assert 'data-act="nav" aria-expanded="true" aria-label="Collapse sidebar"' in side
+    for label in ["Dashboard", "Activities", "Policies", "Start onboarding", "Restart demo"]:
+        assert f'title="{label}"' in side and f'<span class="lbl">{label}</span>' in side
+    assert side.count('<svg class="ico"') == 6  # five items plus the toggle
+    folded = run([{"data": data("pending"), "ui": {"view": "dashboard", "navCollapsed": True}}])[0]
+    assert 'aria-expanded="false" aria-label="Expand sidebar"' in folded["side"]
+
+
+@needs_node
+def test_by_order_headers_show_only_order_and_link() -> None:
+    html = page(data("pending"), "activities", feedView="order", **CHECKED)
+    assert 'class="chain"' not in html
+    for gone in [
+        "16 bags of flour · $800.00 · bill BILL-07",
+        "3 bags of cane sugar · $120.00",
+        "Other actions Claude tried during its runs",
+    ]:
+        assert gone not in html
+    assert '<b>Order PO-2041 · Flour Co</b></div><a href="#order/PO-2041"' in html
+
+
+@needs_node
+def test_greeting_names_the_business_and_sidebar_drops_it() -> None:
+    out = run([{"data": data("pending"), "ui": {"view": "dashboard", "filter": "all"}}])[0]
+    assert "<h1>Good afternoon, Sweet Rose Bakery</h1>" in out["main"]
+    assert '<div class="brand"><b>Ledger</b></div>' in out["side"]
+    assert "Sweet Rose Bakery" not in out["side"]

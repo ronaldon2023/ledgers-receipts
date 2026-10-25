@@ -201,27 +201,22 @@ Portal.groups = function (feed, byOrder) {
   var esc = Portal.esc, orders = feed.orders || [], known = {};
   var out = orders.map(function (o) {
     known[o.order_number] = true;
-    var chain = (o.progress || []).map(function (p) {
-      return p.level === "done" ? '<li><span class="ic-ok">✓</span>' + esc(p.label) + '</li>'
-        : '<li><span class="b ' + Portal.status(Portal.LEVEL, p.level)[1] + '">' + esc(p.label) + '</span></li>';
-    }).join("");
-    var bill = o.bill_id ? ' · bill ' + esc(o.bill_id) + ' due ' + esc(Portal.day(o.bill_due)) : '';
     return { items: events.filter(function (e) { return e.order === o.order_number; }),
-      head: '<div class="ordhead"><div class="oh-l"><b>Order ' + esc(o.order_number) + ' · ' + esc(o.seller) + '</b><span class="muted small">' +
-        esc(o.summary) + ' · ' + esc(Portal.money(o.total_cents)) + bill + '</span></div>' +
-        '<ol class="chain" aria-label="Order progress">' + chain + '</ol><a href="' + esc(Portal.href("#order/" + o.order_number)) + '" class="small">Order receipt</a></div>' };
+      head: '<div class="ordhead"><div class="oh-l"><b>Order ' + esc(o.order_number) + ' · ' + esc(o.seller) + '</b></div>' +
+        '<a href="' + esc(Portal.href("#order/" + o.order_number)) + '" class="small">Order receipt</a></div>' };
   });
   out.push({ items: events.filter(function (e) { return !known[e.order]; }),
-    head: '<div class="ordhead"><div class="oh-l"><b>Not tied to an order</b><span class="muted small">Other actions Claude tried during its runs</span></div></div>' });
+    head: '<div class="ordhead"><div class="oh-l"><b>Not tied to an order</b></div></div>' });
   return out;
 };
 Portal.feedHtml = function (feed, ui) {
   var esc = Portal.esc, byOrd = ui.feedView !== "time"; // By order is the default
-  var h = '<section aria-label="AI agent activities"><div class="sh"><div class="filters" role="group" aria-label="Filter">';
+  var h = '<section aria-label="AI agent activities"><div class="sh feedtop"><div class="filters" role="group" aria-label="Filter">';
   Portal.FILTERS.forEach(function (f) {
     h += '<button type="button" class="chip" data-filter="' + f[0] + '" aria-pressed="' + (ui.filter === f[0]) + '">' + esc(f[1]) + '</button>';
   });
-  h += '</div></div><div class="feedbar"><div class="viewtoggle" role="group" aria-label="Group activities">' +
+  // Filters on the left, the By order / By time switch on the right of the same row.
+  h += '</div><div class="viewtoggle" role="group" aria-label="Group activities">' +
     '<button type="button" class="seg" data-feedview="order" aria-pressed="' + byOrd + '">By order</button>' +
     '<button type="button" class="seg" data-feedview="time" aria-pressed="' + !byOrd + '">By time</button></div>' +
     '</div><div class="feed">';
@@ -244,6 +239,22 @@ Portal.feedHtml = function (feed, ui) {
   return h + '</div></section>';
 };
 
+/* Sidebar icons: 20px line icons drawn in the text color. */
+Portal.ICON = (function () {
+  var svg = function (d) {
+    return '<svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+  };
+  return {
+    dashboard: svg('<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
+    activities: svg('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
+    policies: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
+    onboarding: svg('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'),
+    reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
+    collapse: svg('<path d="M15 6l-6 6 6 6"/>'),
+    expand: svg('<path d="M9 6l6 6-6 6"/>')
+  };
+})();
+
 /* ---------- pages ---------- */
 Portal.header = function (title, sub) {
   return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1>' + (sub ? '<p>' + Portal.esc(sub) + '</p>' : '') + '</div></header>';
@@ -252,16 +263,13 @@ Portal.dashboard = function (d, ui) {
   var esc = Portal.esc, f = d.feed, g = f.glance, cards = Portal.attention(f, ui);
   var pct = Math.floor(g.budget.used_cents / g.budget.limit_cents * 100); // round down: 99.7% is not "100% used"
   var waiting = cards.filter(function (c) { return c.level === "approve"; });
-  var h = Portal.header("Good afternoon, " + f.owner);
+  var h = Portal.header("Good afternoon, " + f.business);
   h += '<section aria-label="At a glance"><div class="glance">' +
-    '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + '</span></span>' +
-    '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div>' +
-    '<span class="d">' + pct + '% used</span></div>' +
+    '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + ' · ' + pct + '% used</span></span>' +
+    '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div></div>' +
     '<div class="tile"><span class="k">Operating balance</span><span class="n">' + esc(Portal.dollars(g.balance.balance_cents)) + '</span></div>' +
-    '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + waiting.length + '</span><span class="d">' +
-    (waiting.length ? waiting.map(function (c) { return esc(c.short || c.title); }).join("<br>") : "No approvals waiting") + '</span></div>' +
-    '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span>' +
-    '<span class="d">' + esc(g.run.blocked) + ' blocked by the guard · <a href="#activities">see all activities</a></span></div></div></section>';
+    '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + waiting.length + '</span></div>' +
+    '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span></div></div></section>';
   h += '<section aria-labelledby="attnh"><div class="sh"><h2 id="attnh">Needs your attention</h2><span>' +
     (cards.length ? cards.length + (cards.length === 1 ? " item" : " items") : "Nothing waiting") + '</span></div>';
   h += cards.length ? '<div class="attn">' + cards.map(function (c) { return Portal.card(f, c, ui); }).join("") + '</div>'
@@ -440,7 +448,8 @@ Portal.onboarding = function (d, ui) {
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
   d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, policies: d.policies, onboarding: d.onboarding };
-  var brand = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>';
+  var brand = '<div class="brand"><b>Ledger</b></div>';
+  var collapsed = !!ui.navCollapsed;
   if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });
   var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d)
@@ -448,11 +457,15 @@ Portal.page = function (d, ui) {
   if (broken) main = '<p class="banner" role="alert">Untrusted: the activity log failed its tamper check. Don\'t rely on anything here until it\'s fixed.</p>' + main;
   // An order page keeps the page you came from highlighted.
   var cur = view === "policies" || view === "activities" ? view : view.indexOf("order/") === 0 && ui.from ? ui.from : "dashboard";
-  var side = brand +
+  // Collapsible: the toggle shrinks the sidebar to icons; each item keeps its name as a tooltip.
+  var toggle = '<button type="button" class="navtoggle" data-act="nav" aria-expanded="' + !collapsed + '" aria-label="' +
+    (collapsed ? "Expand sidebar" : "Collapse sidebar") + '" title="' + (collapsed ? "Expand sidebar" : "Collapse sidebar") + '">' + Portal.ICON[collapsed ? "expand" : "collapse"] + '</button>';
+  var item = function (icon, label) { return Portal.ICON[icon] + '<span class="lbl">' + esc(label) + '</span>'; };
+  var side = '<div class="sidetop">' + brand + toggle + '</div>' +
     [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
-      return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
-    }).join("") + '<div class="navbtns"><button type="button" class="btn" data-onb="again">Start onboarding</button>' +
-    '<button type="button" class="btn" data-act="reset">Restart demo</button></div>' +
+      return '<a href="#' + l[0] + '" title="' + esc(l[1]) + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + item(l[0], l[1]) + '</a>';
+    }).join("") + '<div class="navbtns"><button type="button" class="btn" data-onb="again" title="Start onboarding">' + item("onboarding", "Start onboarding") + '</button>' +
+    '<button type="button" class="btn" data-act="reset" title="Restart demo">' + item("reset", "Restart demo") + '</button></div>' +
     '<div class="meta"><span>' + esc(Portal.day(d.feed.as_of) + " · " + Portal.time(d.feed.as_of)) + '</span><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
     '<span>Signed in as ' + esc(d.feed.owner) + '</span></div>';
   return { side: side, main: main };
@@ -466,7 +479,7 @@ if (typeof document !== "undefined") (function () {
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "null");
     if (saved && STATES.indexOf(saved.state) >= 0) { ui.state = saved.state; ui.dismissed = saved.dismissed || {}; ui.ran = saved.ran || {}; }
-    if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; }
+    if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; ui.navCollapsed = !!saved.navCollapsed; }
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
   // ?state= starts that demo state fresh, so a rehearsal's clicks don't leak into the next run.
@@ -487,6 +500,7 @@ if (typeof document !== "undefined") (function () {
     var out = Portal.page(data, ui);
     side.innerHTML = out.side;
     side.hidden = !out.side;
+    side.classList.toggle("collapsed", !!ui.navCollapsed);
     app.innerHTML = out.main;
     document.title = (TITLES[ui.view] || "Order " + ui.view.slice(6)) + " · Ledger";
   }
@@ -498,7 +512,7 @@ if (typeof document !== "undefined") (function () {
   function set(p) {
     for (var k in p) ui[k] = p[k];
     try {
-      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran, onboarded: ui.onboarded, rules: ui.onboard.rules }));
+      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran, navCollapsed: !!ui.navCollapsed, onboarded: ui.onboarded, rules: ui.onboard.rules }));
     } catch (e) { /* ignore */ }
     render();
   }
@@ -589,6 +603,7 @@ if (typeof document !== "undefined") (function () {
     if (t.hasAttribute("data-feedview")) return set({ feedView: t.getAttribute("data-feedview") });
     var card = (data.feed.attention || []).filter(function (c) { return c.id === t.getAttribute("data-card"); })[0];
     var act = t.getAttribute("data-act");
+    if (act === "nav") return set({ navCollapsed: !ui.navCollapsed });
     if (act === "reset") { clearInterval(timer); clearTimeout(timer); ui.running = ui.leaving = ui.entering = null; ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
     if (act === "cancel") return set({ confirming: null });
     if (!card) return;

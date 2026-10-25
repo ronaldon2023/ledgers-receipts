@@ -178,3 +178,90 @@ def test_sessions_and_passkeys_are_isolated_per_account(client):
     assert len(alice_passkeys) == 1
     assert len(bob_passkeys) == 1
     assert alice_passkeys[0]["credential_id"] != bob_passkeys[0]["credential_id"]
+
+
+def test_can_rename_a_passkey(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+    passkey_id = client.get("/api/security/passkeys", headers=headers).json()["passkeys"][0][
+        "credential_id"
+    ]
+
+    renamed = client.post(
+        f"/api/security/passkeys/{passkey_id}/rename", json={"name": "Work laptop"}, headers=headers
+    )
+    assert renamed.status_code == 200
+
+    passkeys = client.get("/api/security/passkeys", headers=headers).json()["passkeys"]
+    assert passkeys[0]["name"] == "Work laptop"
+
+
+def test_rename_rejects_an_empty_name_and_an_unknown_passkey(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+    passkey_id = client.get("/api/security/passkeys", headers=headers).json()["passkeys"][0][
+        "credential_id"
+    ]
+
+    empty = client.post(
+        f"/api/security/passkeys/{passkey_id}/rename", json={"name": "   "}, headers=headers
+    )
+    assert empty.status_code == 400
+
+    unknown = client.post(
+        "/api/security/passkeys/does-not-exist/rename", json={"name": "New name"}, headers=headers
+    )
+    assert unknown.status_code == 404
+
+
+def test_login_rejects_a_foreign_passkey_with_an_undecodable_handle(client):
+    """A passkey the browser's own account picker offered for rp_id
+    "localhost" but that Ledger never registered -- its user_handle isn't
+    even valid UTF-8. This must fail cleanly (400), not crash the server
+    (the real bug this regression-tests: see auth/webauthn.py's
+    account_id_from_discoverable_response)."""
+    from fido2.utils import websafe_encode
+
+    _signup(client, _authenticator())
+    foreign = _authenticator()
+    begin = client.post("/api/login/begin").json()
+    credential = foreign.authenticate_json(begin["options"]["publicKey"])
+    credential["response"]["userHandle"] = websafe_encode(b"\x83\xff\xfe")
+
+    response = client.post(
+        "/api/login/complete", json={"login_id": begin["login_id"], "credential": credential}
+    )
+    assert response.status_code == 400
+
+
+def test_credential_store_tolerates_records_from_an_older_schema(tmp_path):
+    """Regression test: a logs/credentials.json written before `name`,
+    `created_at`, `last_used_at`, and `attachment` existed must still load
+    -- it previously crashed every signup/login on the account (TypeError:
+    missing required positional arguments)."""
+    import json
+
+    from auth.webauthn import CredentialStore
+
+    path = tmp_path / "credentials.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "account_id": "acct-old",
+                    "credential_id_b64": "abc123",
+                    "raw_hex": "00",
+                    "sign_count": 3,
+                }
+            ]
+        )
+    )
+    store = CredentialStore(path=path)
+
+    loaded = store.for_account("acct-old")
+
+    assert len(loaded) == 1
+    assert loaded[0].sign_count == 3
+    assert loaded[0].name  # defaulted, not missing
+    assert loaded[0].attachment is None
+    assert loaded[0].device_label() == "Unknown device"

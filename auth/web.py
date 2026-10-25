@@ -24,7 +24,7 @@ from fido2.webauthn import AuthenticationResponse, RegistrationResponse
 from pydantic import BaseModel
 
 from auth import shared
-from auth.webauthn import WebAuthnError
+from auth.webauthn import GENERIC_SIGNIN_ERROR, WebAuthnError
 
 # Lets another page (e.g. render/portal, a different origin/port) call this API's
 # /api/* endpoints with the browser's real navigator.credentials -- fido2's own origin
@@ -100,7 +100,9 @@ def build_auth_app() -> FastAPI:
             raise HTTPException(400, "unknown or expired registration")
         try:
             response = RegistrationResponse.from_dict(body.credential)
-            shared.auth.register_complete(reg["account_id"], reg["fido_state"], response)
+            shared.auth.register_complete(
+                reg["account_id"], reg["fido_state"], response, attachment=body.attachment
+            )
         except Exception as exc:  # noqa: BLE001 - surface the real reason to the owner
             raise HTTPException(400, f"passkey registration failed: {exc}") from None
         account = shared.accounts.create(reg["display_name"], account_id=reg["account_id"])
@@ -133,10 +135,12 @@ def build_auth_app() -> FastAPI:
                 login["fido_state"], response
             )
         except WebAuthnError as exc:
-            raise HTTPException(400, f"passkey sign-in failed: {exc}") from None
+            raise HTTPException(400, str(exc)) from None
         account = shared.accounts.by_id(account_id)
         if account is None:
-            raise HTTPException(400, "passkey is registered but the account no longer exists")
+            # Same wording as any other sign-in mismatch, deliberately --
+            # see authenticate_complete_discoverable's docstring.
+            raise HTTPException(400, GENERIC_SIGNIN_ERROR)
         session_token = secrets.token_urlsafe(32)
         _sessions[session_token] = account_id
         return {
@@ -154,6 +158,7 @@ def build_auth_app() -> FastAPI:
                 {
                     "credential_id": c.credential_id_b64,
                     "name": c.name,
+                    "device": c.device_label(),
                     "created_at": c.created_at,
                     "last_used_at": c.last_used_at,
                 }
@@ -177,11 +182,30 @@ def build_auth_app() -> FastAPI:
         try:
             response = RegistrationResponse.from_dict(body.credential)
             cred = shared.auth.register_complete(
-                pending["account_id"], pending["fido_state"], response, name=body.name
+                pending["account_id"],
+                pending["fido_state"],
+                response,
+                name=body.name,
+                attachment=body.attachment,
             )
         except Exception as exc:  # noqa: BLE001 - surface the real reason to the owner
             raise HTTPException(400, f"passkey registration failed: {exc}") from None
         return {"ok": True, "credential_id": cred.credential_id_b64, "name": cred.name}
+
+    @app.post("/api/security/passkeys/{credential_id}/rename")
+    def rename_passkey(
+        credential_id: str,
+        body: _RenamePasskeyRequest,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        account = _account_from_session(authorization)
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(400, "name can't be empty")
+        ok = shared.auth.store.rename(account.account_id, credential_id, name)
+        if not ok:
+            raise HTTPException(404, "unknown passkey")
+        return {"ok": True, "name": name}
 
     @app.post("/api/security/passkeys/{credential_id}/remove")
     def remove_passkey(
@@ -206,6 +230,7 @@ class _SignupBeginRequest(BaseModel):
 class _SignupCompleteRequest(BaseModel):
     registration_id: str
     credential: dict
+    attachment: str | None = None
 
 
 class _LoginCompleteRequest(BaseModel):
@@ -217,6 +242,11 @@ class _AddPasskeyCompleteRequest(BaseModel):
     add_id: str
     credential: dict
     name: str | None = None
+    attachment: str | None = None
+
+
+class _RenamePasskeyRequest(BaseModel):
+    name: str
 
 
 _STYLE = """
@@ -274,11 +304,17 @@ a{color:var(--ink)}
 .item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
   padding:12px 14px;border:1px solid var(--rule);border-radius:10px;background:var(--panel)}
 .item .name{font:600 14px var(--sans);color:var(--ink)}
+.item .name input[type=text]{font:600 14px var(--sans);padding:4px 7px;width:auto}
 .item .desc{font-size:12.5px;color:var(--muted);margin-top:2px}
+.item .row{display:flex;align-items:center;gap:8px}
+.item .btns{display:flex;gap:6px;flex-shrink:0}
+.linkbtn{padding:5px 10px;font:600 11px var(--sans);color:var(--ink);background:transparent;
+  border:1px solid var(--rule);border-radius:999px;cursor:pointer}
+.linkbtn:hover{background:var(--card)}
 .revokebtn{padding:5px 10px;font:600 11px var(--sans);color:var(--bad);background:var(--bad-bg);
   border:none;border-radius:999px;cursor:pointer}
 .revokebtn:hover{opacity:.85}
-.revokebtn:disabled{opacity:.4;cursor:default}
+.revokebtn:disabled,.linkbtn:disabled{opacity:.4;cursor:default}
 """
 
 
@@ -320,7 +356,8 @@ go.onclick = async () => {
     const options = PublicKeyCredential.parseCreationOptionsFromJSON(begin.options.publicKey);
     const credential = await navigator.credentials.create({publicKey: options});
     const complete = await fetch('/api/signup/complete', {method:'POST', headers:{'content-type':'application/json'},
-      body: JSON.stringify({registration_id: begin.registration_id, credential: credential.toJSON()})}).then(r => r.json());
+      body: JSON.stringify({registration_id: begin.registration_id, credential: credential.toJSON(),
+        attachment: credential.authenticatorAttachment || null})}).then(r => r.json());
     if (!complete.session_token) throw new Error(complete.detail || JSON.stringify(complete));
     sessionStorage.setItem('ledger_session', complete.session_token);
     window.location.href = '/security';
@@ -393,24 +430,50 @@ _SECURITY_SCRIPT = """
 const error = document.getElementById('error');
 const session = sessionStorage.getItem('ledger_session');
 if (!session) { window.location.href = '/login'; }
+const authed = {headers: {authorization: 'Bearer ' + session}};
 
 function fmt(ts) { return ts ? new Date(ts).toLocaleString() : 'never'; }
 
 function row(p) {
-  return `<li class="item"><div><div class="name">${p.name}</div>
-    <div class="desc">Added ${fmt(p.created_at)} · last used ${fmt(p.last_used_at)}</div></div>
-    <button class="revokebtn" data-id="${p.credential_id}">Remove</button></li>`;
+  return `<li class="item" data-row="${p.credential_id}"><div>
+    <div class="row name"><span class="text">${p.name}</span></div>
+    <div class="desc">${p.device} · added ${fmt(p.created_at)} · last used ${fmt(p.last_used_at)}</div></div>
+    <div class="btns"><button class="linkbtn" data-rename="${p.credential_id}">Rename</button>
+    <button class="revokebtn" data-remove="${p.credential_id}">Remove</button></div></li>`;
+}
+
+function startRename(li, id, oldName) {
+  const nameDiv = li.querySelector('.name');
+  nameDiv.innerHTML = `<input type="text" value="${oldName.replace(/"/g, '&quot;')}">
+    <button class="linkbtn" data-save="${id}">Save</button>`;
+  nameDiv.querySelector('input').focus();
 }
 
 async function load() {
-  const res = await fetch('/api/security/passkeys', {headers: {authorization: 'Bearer ' + session}});
+  const res = await fetch('/api/security/passkeys', authed);
   if (!res.ok) { sessionStorage.removeItem('ledger_session'); window.location.href = '/login'; return; }
   const data = await res.json();
-  document.getElementById('passkeys').innerHTML = data.passkeys.map(row).join('');
-  document.querySelectorAll('.revokebtn').forEach(btn => btn.onclick = async () => {
+  const list = document.getElementById('passkeys');
+  list.innerHTML = data.passkeys.length ? data.passkeys.map(row).join('')
+    : '<li class="hint">No passkeys yet -- add one below.</li>';
+  list.querySelectorAll('[data-rename]').forEach(btn => btn.onclick = () => {
+    const li = btn.closest('[data-row]');
+    startRename(li, btn.dataset.rename, li.querySelector('.name .text').textContent);
+  });
+  list.querySelectorAll('[data-save]').forEach(btn => btn.onclick = async () => {
+    const id = btn.dataset.save, input = btn.closest('.name').querySelector('input');
+    const name = input.value.trim();
+    if (!name) return;
     btn.disabled = true;
-    const res = await fetch(`/api/security/passkeys/${btn.dataset.id}/remove`,
-      {method: 'POST', headers: {authorization: 'Bearer ' + session}});
+    const res = await fetch(`/api/security/passkeys/${id}/rename`, {method: 'POST',
+      headers: {...authed.headers, 'content-type': 'application/json'}, body: JSON.stringify({name})});
+    if (!res.ok) { error.textContent = (await res.json()).detail; error.classList.add('show'); }
+    load();
+  });
+  list.querySelectorAll('[data-remove]').forEach(btn => btn.onclick = async () => {
+    btn.disabled = true;
+    const res = await fetch(`/api/security/passkeys/${btn.dataset.remove}/remove`,
+      {method: 'POST', ...authed});
     if (!res.ok) {
       error.textContent = (await res.json()).detail;
       error.classList.add('show');
@@ -432,13 +495,13 @@ document.getElementById('add').onclick = async () => {
   btn.disabled = true;
   try {
     const name = document.getElementById('new-name').value.trim() || null;
-    const begin = await fetch('/api/security/passkeys/begin',
-      {method: 'POST', headers: {authorization: 'Bearer ' + session}}).then(r => r.json());
+    const begin = await fetch('/api/security/passkeys/begin', {method: 'POST', ...authed}).then(r => r.json());
     const options = PublicKeyCredential.parseCreationOptionsFromJSON(begin.options.publicKey);
     const credential = await navigator.credentials.create({publicKey: options});
     const complete = await fetch('/api/security/passkeys/complete', {method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({add_id: begin.add_id, credential: credential.toJSON(), name})})
+      body: JSON.stringify({add_id: begin.add_id, credential: credential.toJSON(), name,
+        attachment: credential.authenticatorAttachment || null})})
       .then(r => r.json());
     if (!complete.ok) throw new Error(complete.detail || JSON.stringify(complete));
     document.getElementById('new-name').value = '';

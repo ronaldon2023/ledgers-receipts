@@ -1,0 +1,16 @@
+{
+  "description": "Receipts plugin hooks. Skeleton: SessionStart only; the approval, receipt and Stop hooks land in later PRs.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "the-ledgers",
+  "description": "Receipts by The Ledgers: auditable AI work for small businesses.",
+  "owner": {
+    "name": "The Ledgers",
+    "url": "https://github.com/ronaldon2023/ledgers-receipts"
+  },
+  "allowCrossMarketplaceDependenciesOn": ["knowledge-work-plugins"],
+  "plugins": [
+    {
+      "name": "ledgers-receipts",
+      "source": "./",
+      "description": "Guards, a hash-chain log and an order receipt around the Small Business plugin. Code checks the agent's work; the AI never grades itself.",
+      "license": "MIT",
+      "keywords": ["small-business", "audit", "receipts", "guardrails"]
+    }
+  ]
+}

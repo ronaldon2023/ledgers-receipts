@@ -263,7 +263,7 @@ Portal.dashboard = function (d, ui) {
   var esc = Portal.esc, f = d.feed, g = f.glance, cards = Portal.attention(f, ui);
   var pct = Math.floor(g.budget.used_cents / g.budget.limit_cents * 100); // round down: 99.7% is not "100% used"
   var waiting = cards.filter(function (c) { return c.level === "approve"; });
-  var h = Portal.header("Good afternoon, " + f.owner);
+  var h = Portal.header("Good afternoon, " + f.business);
   h += '<section aria-label="At a glance"><div class="glance">' +
     '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + ' · ' + pct + '% used</span></span>' +
     '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div></div>' +
@@ -448,7 +448,7 @@ Portal.onboarding = function (d, ui) {
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
   d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, policies: d.policies, onboarding: d.onboarding };
-  var brand = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>';
+  var brand = '<div class="brand"><b>Ledger</b></div>';
   var collapsed = !!ui.navCollapsed;
   if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });

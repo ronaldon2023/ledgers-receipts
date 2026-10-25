@@ -703,3 +703,11 @@ def test_by_order_headers_show_only_order_and_link() -> None:
     ]:
         assert gone not in html
     assert '<b>Order PO-2041 · Flour Co</b></div><a href="#order/PO-2041"' in html
+
+
+@needs_node
+def test_greeting_names_the_business_and_sidebar_drops_it() -> None:
+    out = run([{"data": data("pending"), "ui": {"view": "dashboard", "filter": "all"}}])[0]
+    assert "<h1>Good afternoon, Sweet Rose Bakery</h1>" in out["main"]
+    assert '<div class="brand"><b>Ledger</b></div>' in out["side"]
+    assert "Sweet Rose Bakery" not in out["side"]

@@ -11,11 +11,14 @@ out of a tool, and is the only code that writes to the bakery database.
 import os
 import sqlite3
 import sys
+from dataclasses import asdict
 from datetime import datetime
 
 from mcp.server.fastmcp import FastMCP
 
 from bakery import faults
+from checks import evaluate
+from checks.source import SqliteSource
 
 mcp = FastMCP("bakery-local")
 
@@ -168,6 +171,17 @@ def pay_bill(bill_id: str, amount_cents: int, to_account: str) -> dict:
         return {"ok": False, "error": error}
     if not isinstance(amount_cents, int) or isinstance(amount_cents, bool) or amount_cents <= 0:
         return {"ok": False, "error": "amount_cents must be a positive whole number"}
+    # Pre-payment checks (C4-C8). Any block refuses the payment and nothing is saved.
+    # If the checks can't run at all, refuse too: fail closed.
+    args = {"bill_id": bill_id, "amount_cents": amount_cents, "to_account": to_account}
+    try:
+        results = evaluate("pay_bill", args, SqliteSource(os.environ.get("BAKERY_DB", "bakery.db")))
+    except Exception as exc:  # noqa: BLE001 - never pay when the checks didn't run
+        return {"ok": False, "error": f"checks could not run: {exc}"}
+    checks = [asdict(r) for r in results]
+    blocked = [c for c in checks if c["status"] == "block"]
+    if blocked:
+        return {"ok": False, "error": "blocked by checks", "blocked": blocked, "checks": checks}
     with _connect() as conn:
         if not conn.execute("SELECT 1 FROM bills WHERE id = ?", (bill_id,)).fetchone():
             return {"ok": False, "error": "no such bill"}
@@ -177,7 +191,7 @@ def pay_bill(bill_id: str, amount_cents: int, to_account: str) -> dict:
             (pay_id, bill_id, amount_cents, to_account, _now()),
         )
         conn.execute("UPDATE bills SET status = 'paid' WHERE id = ?", (bill_id,))
-    return {"ok": True, "id": pay_id}
+    return {"ok": True, "id": pay_id, "checks": checks}
 
 
 def main() -> None:

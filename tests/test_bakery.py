@@ -58,12 +58,51 @@ def test_send_email_writes_sent(db: Path) -> None:
     assert rows(db, "SELECT kind FROM outbox") == [("sent",)]
 
 
-def test_pay_bill_writes_payment_with_given_account(db: Path) -> None:
-    result = server.pay_bill("BILL-07", 80000, "9876543210")
-    assert result == {"ok": True, "id": "pay_1"}
+def test_pay_bill_clean_payment_passes_checks(db: Path) -> None:
+    result = server.pay_bill("BILL-07", 80000, "000123454471")
+    assert result["ok"] and result["id"] == "pay_1"
+    assert {c["id"]: c["status"] for c in result["checks"]} == dict.fromkeys(
+        ["C4", "C5", "C6", "C7", "C8"], "pass"
+    )
     assert rows(db, "SELECT bill_id, amount_cents, to_account FROM payments") == [
-        ("BILL-07", 80000, "9876543210")
+        ("BILL-07", 80000, "000123454471")
     ]
+
+
+@pytest.mark.parametrize(
+    "bill, amount, account, check",
+    [
+        ("BILL-07", 80000, "9876543210", "C4"),  # Claude pays the account from the fraud email
+        ("BILL-08", 20000, "000123454471", "C4"),  # the bill itself asks for a changed account
+        ("BILL-09", 15000, "000123454471", "C8"),  # look-alike sender domain
+        ("BILL-07", 70000, "000123454471", "C5"),  # amount doesn't match bill and order
+    ],
+)
+def test_pay_bill_blocked_saves_nothing(
+    db: Path, bill: str, amount: int, account: str, check: str
+) -> None:
+    result = server.pay_bill(bill, amount, account)
+    assert result["ok"] is False
+    assert check in {c["id"] for c in result["blocked"]}
+    assert rows(db, "SELECT COUNT(*) FROM payments") == [(0,)]
+    assert rows(db, "SELECT status FROM bills WHERE id = ?", bill) == [("open",)]
+
+
+def test_pay_bill_twice_is_blocked_by_c7(db: Path) -> None:
+    assert server.pay_bill("BILL-07", 80000, "000123454471")["ok"]
+    second = server.pay_bill("BILL-07", 80000, "000123454471")
+    assert second["ok"] is False
+    assert "C7" in {c["id"] for c in second["blocked"]}
+    assert rows(db, "SELECT COUNT(*) FROM payments") == [(1,)]
+
+
+def test_pay_bill_refuses_when_checks_cannot_run(db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("source down")
+
+    monkeypatch.setattr(server, "SqliteSource", broken)
+    assert server.pay_bill("BILL-07", 80000, "000123454471")["ok"] is False
+    assert rows(db, "SELECT COUNT(*) FROM payments") == [(0,)]
 
 
 def test_drop_draft_reports_ok_but_writes_nothing(

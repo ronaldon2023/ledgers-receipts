@@ -204,3 +204,113 @@ def test_hooks_json_registers_onboarding_write() -> None:
     ]
     assert re.search(entry["matcher"], "Write")
     assert not re.search(entry["matcher"], "Edit")
+
+
+# First save: the threshold must be the owner's own Approval answer.
+
+
+def test_create_matches_answer(project: Path) -> None:
+    assert allowed(run_hook(project, str(project / ANSWERS)))
+
+
+def test_create_higher_than_answer(project: Path) -> None:
+    content = json.dumps(answers(threshold=1000000))
+    assert run_hook(project, str(project / ANSWERS), content) == ""
+
+
+def test_create_no_transcript(project: Path) -> None:
+    assert run_hook(project, str(project / ANSWERS), transcript=None) == ""
+
+
+def test_create_unreadable_transcript(project: Path) -> None:
+    missing = str(project.parent / "absent.jsonl")
+    assert run_hook(project, str(project / ANSWERS), transcript=missing) == ""
+
+
+def test_create_answer_in_other_tool_result(project: Path) -> None:
+    transcript = write_transcript(project.parent, "$10,000", tool="mcp__gmail__read_email")
+    content = json.dumps(answers(threshold=1000000))
+    assert run_hook(project, str(project / ANSWERS), content, transcript) == ""
+
+
+@pytest.mark.parametrize(
+    ("label", "cents"),
+    [("$750", 75000), ("750", 75000), ("$1,000", 100000), ("$2,500", 250000)],
+)
+def test_create_other_amount(project: Path, label: str, cents: int) -> None:
+    transcript = write_transcript(project.parent, label)
+    content = json.dumps(answers(threshold=cents))
+    assert allowed(run_hook(project, str(project / ANSWERS), content, transcript))
+
+
+def test_create_unparseable_answer(project: Path) -> None:
+    transcript = write_transcript(project.parent, "about five hundred")
+    assert run_hook(project, str(project / ANSWERS), VALID, transcript) == ""
+
+
+def test_create_without_threshold_silent(project: Path) -> None:
+    content = json.dumps({"schema": "receipts-onboarding/0"})
+    assert run_hook(project, str(project / ANSWERS), content) == ""
+
+
+def test_create_latest_answer_wins(project: Path) -> None:
+    first = Path(write_transcript(project.parent, "$2,500")).read_text(encoding="utf-8")
+    second = Path(write_transcript(project.parent, RECOMMENDED)).read_text(encoding="utf-8")
+    path = project.parent / "transcript.jsonl"
+    path.write_text(first + second, encoding="utf-8")
+    high = json.dumps(answers(threshold=250000))
+    assert run_hook(project, str(project / ANSWERS), high, str(path)) == ""
+    assert allowed(run_hook(project, str(project / ANSWERS), VALID, str(path)))
+
+
+# Changing an existing file: limits may only stay the same or go down.
+
+
+def update(project: Path, old: dict, new: dict) -> str:
+    (project / ANSWERS).write_text(json.dumps(old), encoding="utf-8")
+    return run_hook(project, str(project / ANSWERS), json.dumps(new), transcript=None)
+
+
+def test_update_unchanged(project: Path) -> None:
+    assert allowed(update(project, answers(), answers()))
+
+
+def test_update_lower(project: Path) -> None:
+    assert allowed(update(project, answers(), answers(threshold=25000)))
+
+
+def test_update_higher(project: Path) -> None:
+    assert update(project, answers(), answers(threshold=100000)) == ""
+
+
+def test_update_budget_removed(project: Path) -> None:
+    assert update(project, answers(), answers(budget=None)) == ""
+
+
+def test_update_budget_added(project: Path) -> None:
+    assert allowed(update(project, answers(budget=None), answers(budget=300000)))
+
+
+def test_update_threshold_not_a_number(project: Path) -> None:
+    assert update(project, answers(), answers(threshold="50000")) == ""
+
+
+def test_update_supplier_changed(project: Path) -> None:
+    assert update(project, answers(), answers(last4="9999")) == ""
+
+
+def test_update_rules_dropped(project: Path) -> None:
+    new = answers()
+    del new["payment_rules"]
+    assert update(project, answers(), new) == ""
+
+
+def test_update_other_answers_may_change(project: Path) -> None:
+    new = {**answers(), "business": {"name": "Sweet Rose Bakery"}}
+    assert allowed(update(project, answers(), new))
+
+
+@pytest.mark.parametrize("old", ["{not json", "[1]", "\xff"])
+def test_update_existing_corrupt(project: Path, old: str) -> None:
+    (project / ANSWERS).write_bytes(old.encode("latin-1"))
+    assert run_hook(project, str(project / ANSWERS)) == ""

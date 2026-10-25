@@ -12,7 +12,7 @@
   --muted: #6E5D50;
   --brown: #7A4622;
   --brown-hover: #5F3517;
-  --hover: #F4E5D3; /* warmer than --sunk, so a hovered row never looks like a header */
+  --hover: #F2E8DF; /* a pale wash of --brown, so a hovered row never looks like a header */
   --on-brown: #FFFFFF;
   --side: #2A1C13;
   --side-2: #3A2A1F;
@@ -153,7 +153,7 @@ details.steps[open] > summary::before { transform: rotate(90deg); }
 .day { padding: 9px 20px; background: var(--sunk); border-top: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--muted); }
 .day:first-child { border-top: 0; }
 .item { border-top: 1px solid var(--line); }
-.item > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 74px 128px minmax(0, 1fr) 96px; gap: 14px; align-items: start; padding: 14px 20px; }
+.item > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 74px 112px 120px minmax(0, 1fr) 96px; gap: 14px; align-items: start; padding: 14px 20px; }
 .item > summary::-webkit-details-marker { display: none; }
 .item > summary:hover { background: var(--hover); }
 .item .t { font-family: var(--mono); font-size: 13px; color: var(--muted); padding-top: 3px; }
@@ -176,7 +176,7 @@ details.steps[open] > summary::before { transform: rotate(90deg); }
 .feed > .ordhead:first-child { border-top: 0; }
 .oh-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .oh-l b { font-size: 15px; }
-.cat { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.cat { padding-top: 3px; font-size: 13px; color: var(--muted); }
 
 /* Tables and receipt */
 .tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
@@ -277,8 +277,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .stepper li:not(.on) .lbl { display: none; }
   .side .navbtns { margin-top: 8px; flex-basis: 100%; flex-direction: row; flex-wrap: wrap; }
   .side .navbtns .btn { width: auto; flex: 1 1 auto; }
-  .item > summary { grid-template-columns: 64px minmax(0, 1fr); }
+  .item > summary { grid-template-columns: 64px auto minmax(0, 1fr); }
   .item > summary .bcol { grid-column: 2; grid-row: 1; }
+  .item > summary .cat { grid-column: 3; grid-row: 1; }
   .item > summary .main { grid-column: 1 / -1; }
   .item > summary .more { grid-column: 1 / -1; text-align: left; }
   .item .body { padding: 0 16px 16px; }

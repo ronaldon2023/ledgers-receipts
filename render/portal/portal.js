@@ -230,7 +230,7 @@ Portal.feedHtml = function (feed, ui) {
     items.forEach(function (it) {
       var l = Portal.status(Portal.LEVEL, it.level), n = Portal.pick(feed, it.steps).length;
       h += '<details class="item' + (it.level === "resolved" ? " mute" : "") + '"><summary><span class="t">' + (byOrd ? esc(Portal.short(it.at)) + '<br>' : '') + esc(Portal.time(it.at)) + '</span>' +
-        '<span class="bcol"><span class="b ' + l[1] + '">' + esc(l[0]) + '</span><span class="cat">' + esc(it.kind) + (byOrd && it.kind === "Bill" && it.bill ? ' · ' + esc(it.bill) : '') + '</span></span>' +
+        '<span class="bcol"><span class="b ' + l[1] + '">' + esc(l[0]) + '</span></span><span class="cat">' + esc(it.kind) + (byOrd && it.kind === "Bill" && it.bill ? ' · ' + esc(it.bill) : '') + '</span>' +
         '<span class="main"><div class="ti">' + esc(it.title) + '</div><div class="de">' + esc(it.detail) + '</div></span><span class="more">' + n + (n === 1 ? ' step' : ' steps') + '</span></summary>' +
         '<div class="body">' + Portal.trail(Portal.pick(feed, it.steps)) + '</div></details>';
     });

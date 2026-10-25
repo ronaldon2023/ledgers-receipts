@@ -98,3 +98,10 @@ def test_connections_are_closed(db: Path, monkeypatch: pytest.MonkeyPatch) -> No
 def test_tools_never_raise(db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "DB_PATH", db)
     assert not server._place_order("FLR-AP-50", "3")["ok"]
+
+
+def test_relative_db_path_works(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Claude Code starts the server with BAKESUPPLY_DB=bakesupply.db, a relative path.
+    monkeypatch.chdir(tmp_path)
+    seed(Path("bakesupply.db"))
+    assert list_products(Path("bakesupply.db"))

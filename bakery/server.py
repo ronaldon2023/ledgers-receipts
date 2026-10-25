@@ -69,12 +69,13 @@ def list_invoices(status: str = "open") -> dict:
 
 @mcp.tool()
 def list_bills(status: str = "open") -> dict:
-    """List bills with the vendor's name."""
+    """List bills with the vendor's name, the order, and who sent the bill and where it says to pay."""
     if error := _status_filter(status):
         return {"ok": False, "error": error}
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT b.id, v.name AS vendor, b.amount_cents, b.due_date, b.status, b.order_id "
+            "SELECT b.id, v.name AS vendor, b.amount_cents, b.due_date, b.status, b.order_id, "
+            "b.from_addr, b.pay_to_account "
             "FROM bills b JOIN vendors v ON v.id = b.vendor_id "
             "WHERE ? = 'all' OR b.status = ? ORDER BY b.id",
             (status, status),

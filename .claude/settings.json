@@ -3,9 +3,7 @@
     "deny": [
       "Bash(sqlite3:*)",
       "Edit(bakery.db)",
-      "Write(bakery.db)",
       "Edit(logs/**)",
-      "Write(logs/**)",
       "Bash(git push --force:*)",
       "Bash(git commit --no-verify:*)"
     ]

@@ -112,3 +112,9 @@ def test_list_orders_includes_items(db: Path) -> None:
     assert orders["PO-2041"]["total_cents"] == 80000
     assert len(orders["PO-2041"]["items"]) == 2
     assert server.list_bills()["bills"][0]["order_id"] == "PO-2041"
+
+
+def test_list_bills_shows_sender_and_pay_to(db: Path) -> None:
+    bill = server.list_bills()["bills"][0]
+    assert bill["from_addr"] == "billing@flourco.example"
+    assert bill["pay_to_account"] == "000123454471"

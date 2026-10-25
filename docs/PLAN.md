@@ -1,3 +1,5 @@
+> New here? Start with **Team setup** in the README.
+>
 > Copy of the team's Claude doc "The Ledgers: Receipts build plan", exported 2026-10-25. Edit this file in the repo for changes during the build.
 
 # The Ledgers: Receipts build plan
@@ -394,7 +396,7 @@ Pass bar: #3 always appears if Claude drafts for Oak Cafe. #1, #2 and #4 appear 
 
 Hours are counted from kickoff. The two gates are the end-to-end replay passing and the feature freeze.
 
-1. **Hour 0–1: contracts.** Everyone clones the repo, runs `./setup.sh` (Python 3.12) and agrees the 4 contracts. Each owner commits their sample JSON to `contracts/samples/`.
+1. **Hour 0–1: contracts.** Everyone follows **Team setup** in the README (clone, `./setup.sh`, `make reset`, `make test`, start `claude` in the repo folder) and agrees the 4 contracts. Each owner commits their sample JSON to `contracts/samples/`.
 2. **Hour 1–4: build in parallel against the samples.** Each person's unit tests go green. Person 1 checks in early so the others can call the real server.
 3. **Hour 4: integration.** Ronaldo wires guard → server → log → verifier → renderer. **Gate: ****`make replay`**** shows all 4 planted failures.**
 4. **Hour 4–5: live runs.** Run `make demo` 3 times and record the results. Fix the bugs found.

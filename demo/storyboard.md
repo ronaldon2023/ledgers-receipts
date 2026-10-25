@@ -43,7 +43,7 @@ Scenes 5 and 6 are the ones that must never fail.
 
 - **Product name.** The pitch says "Receipts", the owner portal in #11 is branded "Ledger", and the marketplace is `the-ledgers`. Scene 9 ends on the project name, so pick one before the slides are made.
 - **Scene 3 in a live run.** PO-2041 is already seeded as placed, and BakeSupply returns `ord_1`. In a live run Claude would create a second order that the receipt never shows. The fix belongs to the `bakery/` owner, so scene 3 stays replay-only for now.
-- **Demo owner.** `demo/` and the slides have no owner. Once someone takes it, add a one-line row to the ownership table in `CLAUDE.md`. That table is shared, so it needs the team's okay.
+- **Owners.** Owen owns `demo/` for now. The slides and the backup video have no owner. Add a one-line `demo/` row to the ownership table in `CLAUDE.md`. That table is shared, so it needs the team's okay.
 - **One story.** `docs/PLAN.md` still describes chasing three invoices plus a bill. This storyboard follows the order receipt in `docs/mock/order_receipt.json`.
 - **PO numbers.** BakeSupply returns `ord_1` while the bakery calls the order PO-2041. An optional PO number on the order call would tie the two ids together on the receipt, but it doesn't fix the pre-seeded order above.
 - **Audience.** If the judges are investors or security people, rewrite scene 1 to name them.

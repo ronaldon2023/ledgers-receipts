@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "order_receipt.schema.json",
+  "title": "Order receipt (draft v0)",
+  "description": "One receipt per order, created at order start and revised at each lifecycle stage. Money is integer cents; every value is already masked. Order and invoice field names follow schema.org Order and Invoice.",
+  "type": "object",
+  "required": ["receipt_type", "receipt_id", "revision", "state", "generated_at", "business", "verdict",
+               "order", "lifecycle", "checks", "chain"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "receipt_type": {"const": "order-receipt/v0"},
+    "receipt_id": {"type": "string"},
+    "revision": {"type": "integer", "minimum": 1, "description": "Bumped each time a stage updates the receipt"},
+    "state": {"enum": ["open", "final"]},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "business": {"$ref": "#/$defs/party"},
+    "verdict": {"enum": ["IN_PROGRESS", "VERIFIED", "ISSUES_FOUND", "UNTRUSTED"]},
+    "verdict_reason": {"type": "string"},
+    "owner_action": {
+      "type": "object",
+      "required": ["needed"],
+      "additionalProperties": false,
+      "properties": {"needed": {"type": "boolean"}, "title": {"type": "string"}, "why": {"type": "string"}}
+    },
+    "order": {
+      "type": "object",
+      "required": ["order_number", "order_date", "order_status", "seller", "items", "currency", "total_cents"],
+      "additionalProperties": false,
+      "properties": {
+        "order_number": {"type": "string"},
+        "order_date": {"type": "string", "format": "date-time"},
+        "order_status": {
+          "description": "schema.org OrderStatus members, snake_cased, plus draft",
+          "enum": ["draft", "processing", "in_transit", "delivered", "payment_due", "paid", "problem", "cancelled", "returned"]
+        },
+        "seller": {"$ref": "#/$defs/party"},
+        "customer": {"$ref": "#/$defs/party"},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "quantity", "unit_price_cents", "total_cents"],
+            "additionalProperties": false,
+            "properties": {
+              "sku": {"type": "string"},
+              "name": {"type": "string"},
+              "quantity": {"type": "integer", "minimum": 1},
+              "unit_price_cents": {"$ref": "#/$defs/cents"},
+              "total_cents": {"$ref": "#/$defs/cents"}
+            }
+          }
+        },
+        "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "subtotal_cents": {"$ref": "#/$defs/cents"},
+        "tax_cents": {"$ref": "#/$defs/cents"},
+        "total_cents": {"$ref": "#/$defs/cents"}
+      }
+    },
+    "invoice": {
+      "type": ["object", "null"],
+      "required": ["invoice_number", "references_order", "total_payment_due_cents", "payment_status"],
+      "additionalProperties": false,
+      "properties": {
+        "invoice_number": {"type": "string"},
+        "references_order": {"type": "string"},
+        "received_at": {"type": "string", "format": "date-time"},
+        "from": {"type": "string"},
+        "total_payment_due_cents": {"$ref": "#/$defs/cents"},
+        "payment_due_date": {"type": "string", "format": "date"},
+        "payment_status": {"enum": ["payment_due", "payment_awaiting_approval", "payment_blocked", "payment_complete"]}
+      }
+    },
+    "payment": {
+      "type": ["object", "null"],
+      "required": ["status", "amount_cents"],
+      "additionalProperties": false,
+      "properties": {
+        "payment_id": {"type": ["string", "null"]},
+        "status": {"enum": ["not_started", "awaiting_approval", "blocked", "sent", "failed"]},
+        "amount_cents": {"$ref": "#/$defs/cents"},
+        "requested_to_account": {"$ref": "#/$defs/masked"},
+        "account_on_file": {"$ref": "#/$defs/masked"},
+        "method": {"type": "string"}
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requested_by": {"$ref": "#/$defs/actor"},
+        "approvals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["step", "by", "method", "at"],
+            "additionalProperties": false,
+            "properties": {
+              "step": {"$ref": "#/$defs/stage"},
+              "by": {"$ref": "#/$defs/actor"},
+              "method": {"enum": ["passkey", "hash", "click"]},
+              "at": {"type": "string", "format": "date-time"}
+            }
+          }
+        }
+      }
+    },
+    "policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "title", "result"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"enum": ["order", "payment", "budget"]},
+          "title": {"type": "string"},
+          "result": {"enum": ["pass", "fail", "approval_required", "not_checked"]},
+          "detail": {"type": "string"},
+          "limit_cents": {"$ref": "#/$defs/cents"},
+          "used_cents": {"$ref": "#/$defs/cents"},
+          "balance_cents": {"$ref": "#/$defs/cents"},
+          "after_cents": {"$ref": "#/$defs/cents"}
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage", "at", "actor", "status", "checks"],
+        "additionalProperties": false,
+        "properties": {
+          "stage": {"$ref": "#/$defs/stage"},
+          "at": {"type": ["string", "null"], "format": "date-time"},
+          "actor": {"enum": ["agent", "human", "supplier", "trigger"]},
+          "status": {"enum": ["not_started", "waiting", "done", "blocked", "failed"]},
+          "checks": {"type": "array", "items": {"type": "string"}, "description": "ids from checks[]"}
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "stage", "kind", "title", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "status": {
+            "description": "PLAN.md contract 4 statuses, plus flagged and needs_approval (new, need team agreement)",
+            "enum": ["verified", "blocked", "flagged", "needs_approval", "phantom", "false_claim",
+                     "silent_action", "not_done", "unknown_recipient"]
+          },
+          "stage": {"$ref": "#/$defs/stage"},
+          "kind": {"enum": ["policy", "guard", "records", "summary"]},
+          "guard": {"enum": ["email_spoofing", "policy", "security"]},
+          "policy_id": {"type": "string"},
+          "title": {"type": "string"},
+          "evidence": {"type": "array", "items": {"type": "string"}, "description": "keys into evidence{}"},
+          "caused_by": {
+            "type": "object",
+            "required": ["ref", "quote"],
+            "additionalProperties": false,
+            "properties": {"ref": {"type": "string"}, "quote": {"type": "string"}}
+          },
+          "quote": {"type": "string", "description": "exact text from Claude's summary"}
+        }
+      }
+    },
+    "pii": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entity", "where", "action"],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {"type": "string", "description": "Presidio entity type"},
+          "where": {"type": "string"},
+          "action": {"enum": ["masked", "blocked"]}
+        }
+      }
+    },
+    "chain": {
+      "type": "object",
+      "required": ["ok", "entries", "head"],
+      "additionalProperties": false,
+      "properties": {
+        "ok": {"type": "boolean"},
+        "algorithm": {"const": "sha256"},
+        "entries": {"type": "integer", "minimum": 0},
+        "head": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Masked one-line excerpts keyed by ref (log:N, inbox:N, summary)",
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "cents": {"type": "integer", "minimum": 0},
+    "masked": {"type": "string", "pattern": "^\\*+[0-9]{4}$"},
+    "stage": {"enum": ["order_placed", "order_sent", "fulfilled", "invoice_received", "payment_ready", "payment_sent"]},
+    "party": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "email": {"type": "string"}}
+    },
+    "actor": {
+      "type": "object",
+      "required": ["kind", "name"],
+      "additionalProperties": false,
+      "properties": {"kind": {"enum": ["agent", "human"]}, "name": {"type": "string"}, "session": {"type": "string"}}
+    }
+  }
+}

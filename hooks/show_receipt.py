@@ -43,6 +43,9 @@ PASSING = ("verified", "pass")
 # Same pattern as the PreToolUse matcher in hooks/hooks.json. Used with fullmatch, because
 # `$` alone also accepts a trailing newline.
 PAY_BILL_TOOL = re.compile(r"^mcp__(plugin_ledgers-receipts_)?bakery-local__pay_bill$")
+# Order numbers the portal opens as receipt_live_<order>.json (Portal.orderReceiptFile in
+# render/portal/portal.js). Anything else links to the dashboard.
+PORTAL_ORDER = re.compile(r"[A-Za-z0-9_-]{1,40}")
 
 
 def is_receipts_checkout(project: Path) -> bool:
@@ -204,6 +207,9 @@ def message(project: Path, receipt: dict[str, Any], port: int) -> str:
         text += f" ({_safe(failed.get('id'))} {_safe(failed.get('status'))}: "
         text += f"{_safe(failed.get('title'))})"
     text += f". Open http://localhost:{port}/?state=live"
+    number = order.get("order_number")
+    if isinstance(number, str) and PORTAL_ORDER.fullmatch(number):
+        text += f"#order/{number}"  # straight to this order's receipt
     if not portal_listening(port):
         start = f"cd {shlex.quote(str(project))} && .venv/bin/python -m render.portal"
         text += f" (the portal isn't running; start it with: {start} --port {port})"

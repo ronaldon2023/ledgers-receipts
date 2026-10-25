@@ -120,9 +120,18 @@ def test_clean_receipt_says_verified(tmp_path: Path, listener: int) -> None:
     stub_verify(tmp_path, clean)
     write_log(tmp_path, payment())
     msg = system_message(run_hook(tmp_path, listener))
-    assert (
-        msg == f"Receipt ready for PO-2038: VERIFIED. Open http://localhost:{listener}/?state=live"
-    )
+    link = f"http://localhost:{listener}/?state=live#order/PO-2038"
+    assert msg == f"Receipt ready for PO-2038: VERIFIED. Open {link}"
+
+
+@pytest.mark.parametrize("number", ["PO#2038", "PO 2038", "x" * 41, 2038])
+def test_unsafe_order_number_links_to_the_dashboard(
+    tmp_path: Path, listener: int, number: object
+) -> None:
+    stub_verify(tmp_path, {**RECEIPT, "order": {**RECEIPT["order"], "order_number": number}})
+    write_log(tmp_path, payment())
+    msg = system_message(run_hook(tmp_path, listener))
+    assert msg.endswith(f"Open http://localhost:{listener}/?state=live")
 
 
 def test_default_port_is_8000(tmp_path: Path) -> None:

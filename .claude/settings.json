@@ -9,5 +9,18 @@
       "Bash(git push --force:*)",
       "Bash(git commit --no-verify:*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && .venv/bin/python -m receipts.hook_log"
+          }
+        ]
+      }
+    ]
   }
 }

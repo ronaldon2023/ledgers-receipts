@@ -1,8 +1,33 @@
-> Copy of the team's Claude doc "The Ledgers: Receipts build plan", exported 2026-10-25. Edit this file in the repo for changes during the build.
-
 # The Ledgers: Receipts build plan
 
 2026-10-25 · @Ronny
+
+## Start here: team instructions
+
+Current instructions for the team. Check back here during the day; new steps are added at the top of this section.
+
+### Local database
+
+After cloning the repo and running `./setup.sh` once (see **Team setup** in the README):
+
+```sh
+make reset
+```
+
+This creates `bakery.db` on your laptop with the demo data:
+
+- 3 customers, 3 open invoices plus 1 paid
+- Flour Co (account on file ending 4471) with an $800 bill
+- An inbox with 6 emails, including the 2 planted attacks (#4 injection, #5 bank change)
+
+Good to know:
+
+- The database is **not in GitHub**. Everyone generates the same one from `bakery/seed.py`.
+- Rerun `make reset` anytime for a clean copy. It only affects your laptop.
+- If your code only reads it (guard, verifier), open it read-only: `sqlite3.connect("file:bakery.db?mode=ro", uri=True)`.
+- To look inside, run `sqlite3 bakery.db ".tables"` in your own terminal, or use any SQLite viewer. Claude is blocked from running `sqlite3` on purpose, so data only changes through the bakery server.
+
+> This file is a copy of the team's Claude doc "The Ledgers: Receipts build plan", exported 2026-10-25. Edit it here in the repo for changes during the build.
 
 ***Receipts*** makes an AI agent's work auditable: every action is logged by the harness, checked by code against the real systems, and tamper-evident. The Small Business plugin tells Claude the rules; ***Receipts*** checks whether Claude followed them. The AI does the work, code checks the work, and the AI never grades itself.
 
@@ -394,7 +419,7 @@ Pass bar: #3 always appears if Claude drafts for Oak Cafe. #1, #2 and #4 appear 
 
 Hours are counted from kickoff. The two gates are the end-to-end replay passing and the feature freeze.
 
-1. **Hour 0–1: contracts.** Everyone clones the repo, runs `./setup.sh` (Python 3.12) and agrees the 4 contracts. Each owner commits their sample JSON to `contracts/samples/`.
+1. **Hour 0–1: contracts.** Everyone follows **Team setup** in the README (clone, `./setup.sh`, `make reset`, `make test`, start `claude` in the repo folder) and agrees the 4 contracts. Each owner commits their sample JSON to `contracts/samples/`.
 2. **Hour 1–4: build in parallel against the samples.** Each person's unit tests go green. Person 1 checks in early so the others can call the real server.
 3. **Hour 4: integration.** Ronaldo wires guard → server → log → verifier → renderer. **Gate: ****`make replay`**** shows all 4 planted failures.**
 4. **Hour 4–5: live runs.** Run `make demo` 3 times and record the results. Fix the bugs found.

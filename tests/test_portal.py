@@ -725,3 +725,40 @@ def test_rules_step_shows_saving_and_escaped_errors() -> None:
     assert '<p class="banner" role="alert">Your rules weren\'t saved: &lt;script&gt;' in failed
     assert "<script" not in failed
     assert ">Save rules</button>" in failed
+
+
+def _js(expr: str) -> object:
+    code = (
+        'const vm=require("vm"),fs=require("fs");const c={};vm.createContext(c);'
+        "vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),c);"
+        f"process.stdout.write(JSON.stringify({expr}));"
+    )
+    proc = subprocess.run(
+        ["node", "-e", code.replace("Portal", "c.Portal"), str(JS)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(proc.stdout)
+
+
+@needs_node
+def test_live_order_receipt_file_names_are_safe() -> None:
+    assert _js('Portal.orderReceiptFile("live", "PO-2038")') == "receipt_live_PO-2038.json"
+    for num in ["../policies", "PO 2038", "", "a/b", "x" * 41]:
+        assert _js(f"Portal.orderReceiptFile('live', {json.dumps(num)})") is None
+    assert _js('Portal.orderReceiptFile("stopped", "PO-2041")') is None
+
+
+@needs_node
+def test_each_order_opens_its_own_receipt() -> None:
+    d = data("stopped")
+    other = copy.deepcopy(d["receipt"])
+    other["order"]["order_number"] = "PO-2038"
+    other["verdict_reason"] = "This is PO-2038's own receipt."
+    d["feed"]["orders"].append(dict(d["feed"]["orders"][0], order_number="PO-2038"))
+    own = page({**d, "orderReceipt": other}, "order/PO-2038")
+    assert "This is PO-2038&#39;s own receipt." in own
+    assert "PO-2038&#39;s own receipt" not in page({**d, "orderReceipt": other}, "order/PO-2041")
+    fallback = page(d, "order/PO-2038")  # no file for this order: the feed row, no crash
+    assert "Order receipt · PO-2038" in fallback and "No receipt yet" in fallback

@@ -11,7 +11,7 @@
     "$schema": {"$ref": "#/$defs/text"},
     "receipt_type": {"const": "order-receipt/v0"},
     "receipt_id": {"$ref": "#/$defs/text"},
-    "supersedes": {"type": ["string", "null"], "description": "receipt_id of an earlier receipt for the same order"},
+    "supersedes": {"oneOf": [{"$ref": "#/$defs/text"}, {"type": "null"}], "description": "receipt_id of an earlier receipt for the same order"},
     "generated_at": {"$ref": "#/$defs/datetime"},
     "business": {"$ref": "#/$defs/party"},
     "verdict": {"enum": ["VERIFIED", "ISSUES_FOUND", "UNTRUSTED"]},
@@ -61,7 +61,7 @@
       "properties": {
         "bill_id": {"$ref": "#/$defs/text"},
         "vendor_id": {"$ref": "#/$defs/text"},
-        "vendor_invoice_number": {"type": "string", "description": "The supplier's own number, when it differs from bill_id"},
+        "vendor_invoice_number": {"$ref": "#/$defs/text", "description": "The supplier's own number, when it differs from bill_id"},
         "references_order": {"$ref": "#/$defs/text"},
         "received_at": {"$ref": "#/$defs/datetime"},
         "from": {"$ref": "#/$defs/text"},
@@ -232,7 +232,7 @@
         "required": ["entity", "where", "action"],
         "additionalProperties": false,
         "properties": {
-          "entity": {"type": "string", "description": "Presidio entity type"},
+          "entity": {"$ref": "#/$defs/text", "description": "Presidio entity type"},
           "where": {"$ref": "#/$defs/ref"},
           "action": {"enum": ["masked", "blocked"]}
         }
@@ -310,6 +310,27 @@
       "description": "payment.status blocked means the payment_sent stage is blocked, and only blocked",
       "if": {"properties": {"payment": {"properties": {"status": {"const": "blocked"}}}}},
       "then": {"properties": {"lifecycle": {"$ref": "#/$defs/payment_stage_is_blocked"}}}
+    },
+    {
+      "description": "payment.status failed means the payment_sent stage is failed, and only failed",
+      "if": {"properties": {"payment": {"properties": {"status": {"const": "failed"}}}}},
+      "then": {"properties": {"lifecycle": {"$ref": "#/$defs/payment_stage_is_failed"}}}
+    },
+    {
+      "description": "payment.status not_started means the payment_sent stage is absent or not reached",
+      "if": {"properties": {"payment": {"properties": {"status": {"const": "not_started"}}}}},
+      "then": {
+        "properties": {
+          "lifecycle": {
+            "not": {"contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"not": {"const": "not_reached"}}}}}
+          }
+        }
+      }
+    },
+    {
+      "description": "An error message only accompanies a summary check that errored",
+      "if": {"properties": {"summary_check": {"properties": {"status": {"enum": ["checked", "not_checked"]}}}}},
+      "then": {"properties": {"summary_check": {"not": {"required": ["error"]}}}}
     }
   ],
   "$defs": {
@@ -324,6 +345,10 @@
     "payment_stage_is_blocked": {
       "contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"const": "blocked"}}},
       "not": {"contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"not": {"const": "blocked"}}}}}
+    },
+    "payment_stage_is_failed": {
+      "contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"const": "failed"}}},
+      "not": {"contains": {"properties": {"stage": {"const": "payment_sent"}, "status": {"not": {"const": "failed"}}}}}
     },
     "ref": {"type": "string", "pattern": "^(s[0-9]+:log:[0-9]+|inbox:[0-9]+|summary)$"},
     "refs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ref"}},

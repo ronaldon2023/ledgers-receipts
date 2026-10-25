@@ -53,6 +53,10 @@ def xref_problems(receipt: dict) -> list[str]:
     ]
     refs += [p["where"] for p in receipt["pii"]]
     problems += [f"ref {r} has no evidence entry" for r in refs if r not in receipt["evidence"]]
+    sessions = [s["session"] for s in receipt["sessions"]]
+    problems += [f"duplicate session {s}" for s in sorted(set(sessions)) if sessions.count(s) > 1]
+    stages = [row["stage"] for row in receipt["lifecycle"]]
+    problems += [f"duplicate stage {s}" for s in sorted(set(stages)) if stages.count(s) > 1]
     entries = {s["session"]: s["entries"] for s in receipt["sessions"]}
     for ref in receipt["evidence"]:
         found = re.match(r"(s\d+):log:(\d+)$", ref)
@@ -103,6 +107,10 @@ XREF_BREAKS = {
         "authorization.requested_by.session", "s7"
     )(r),
     "receipt supersedes itself": lambda r: _set("supersedes", r["receipt_id"])(r),
+    "duplicate session s1": lambda r: r["sessions"].append(copy.deepcopy(r["sessions"][0])),
+    "duplicate stage payment_sent": lambda r: r["lifecycle"].append(
+        copy.deepcopy(r["lifecycle"][-1])
+    ),
 }
 
 
@@ -263,7 +271,37 @@ CONTRADICTIONS = {
     "short_chain_head": _set("sessions.0.head", "f1204705a75493c8"),
     "unmasked_account": _set("payment.account_on_file", "000123454471"),
     "unknown_ref_shape": _set("checks.0.evidence", ["log:9"]),
+    "payment_not_started_but_stage_blocked": _set("payment.status", "not_started"),
+    "payment_failed_but_stage_blocked": _set("payment.status", "failed"),
+    "error_text_on_checked_summary": _set("summary_check.error", "extractor timed out"),
+    "account_in_vendor_invoice_number": _set("bill.vendor_invoice_number", "9876543210"),
 }
+
+# Each case breaks one VERIFIED condition on an otherwise clean order, so every clause is pinned.
+VERIFIED_BREAKS = {
+    "owner_action_needed": _set("owner_action", {"needed": True}),
+    "stage_failed": _set("lifecycle.0.status", "failed"),
+    "check_flagged": _set("checks.0.status", "flagged"),
+    "summary_not_checked": _steps(
+        _drop_summary_checks, _set("summary_check.status", "not_checked")
+    ),
+    "no_checks": _set("checks", []),
+    "payment_not_started_but_stage_done": _steps(
+        _set("payment.status", "not_started"), _set("payment.payment_id", None)
+    ),
+    "payment_failed": _steps(
+        _set("payment.status", "failed"),
+        _set("payment.payment_id", None),
+        _set("lifecycle.5.status", "failed"),
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(VERIFIED_BREAKS))
+def test_verified_condition_is_enforced(name: str) -> None:
+    receipt = clean_receipt()
+    VERIFIED_BREAKS[name](receipt)
+    assert schema_errors(receipt), f"VERIFIED with {name} validated"
 
 
 @pytest.mark.parametrize("name", sorted(CONTRADICTIONS))

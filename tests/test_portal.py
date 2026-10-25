@@ -162,7 +162,7 @@ def test_unknown_status_renders_as_unknown() -> None:
     d = data("stopped")
     d["receipt"]["checks"][0]["status"] = "constructor"
     d["receipt"]["verdict"] = "SOMETHING_NEW"
-    d["feed"]["events"][0]["level"] = "brand_new"
+    next(e for e in d["feed"]["events"] if e["id"] == "ev_mismatch")["level"] = "brand_new"
     html = page(d, "order/PO-2041") + page(d, "activities")
     assert html.count(">Unknown<") >= 3
 
@@ -171,7 +171,7 @@ def test_unknown_status_renders_as_unknown() -> None:
 def test_data_is_escaped() -> None:
     d = copy.deepcopy(data("stopped"))
     stopped = next(c for c in d["feed"]["attention"] if c["id"] == "att_stopped")
-    d["feed"]["events"][0]["title"] = XSS
+    next(e for e in d["feed"]["events"] if e["id"] == "ev_mismatch")["title"] = XSS
     stopped["quote"]["text"] = XSS
     d["feed"]["steps"][0]["quote"] = XSS
     d["receipt"]["checks"][0]["title"] = XSS
@@ -243,7 +243,7 @@ def test_restock_order_card_needs_approval() -> None:
     card = html[html.rindex("<article", 0, start) : html.index("</article>", start)]
     assert 'class="card ask"' in card
     assert 'class="checks"' not in card
-    assert "Steps Claude took (6)" in card
+    assert "Steps Claude took (5)" in card
     assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
     assert "Approve with passkey" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
@@ -268,7 +268,7 @@ def test_activities_have_their_own_page() -> None:
 
 @needs_node
 def test_approval_cards_have_no_status_line() -> None:
-    html = page(data("pending"), **CHECKED)
+    html = page(data("pending"))
     attn = html[html.index("Needs your attention") :]
     assert attn.count('<article class="card ask">') == 2
     assert 'class="metaRow"' not in attn
@@ -403,15 +403,26 @@ def test_demo_buttons_sit_in_sidebar_above_the_date() -> None:
 
 
 @needs_node
-def test_inventory_check_card_comes_first_and_reveals_the_order() -> None:
+def test_three_cards_and_start_check_shows_its_result() -> None:
     before = page(data("pending"))
     attn = before[before.index("Needs your attention") :]
-    assert attn.index("Start this week&#39;s inventory check") < attn.index("Pay Flour Co $800.00")
+    assert attn.count("<article ") == 3
+    order = [
+        attn.index(t)
+        for t in [
+            "Start this week&#39;s inventory check",
+            "Order 3 bags of cane sugar from Flour Co",
+            "Pay Flour Co $800.00",
+        ]
+    ]
+    assert order == sorted(order)
     assert ">Start check<" in attn and ">Not now<" in attn
-    assert "cane sugar" not in before
+    assert "Inventory check finished" not in before
     after = page(data("pending"), **CHECKED)
-    assert "Start this week&#39;s inventory check" not in after
-    assert "Order 3 bags of cane sugar from Flour Co" in after
+    attn = after[after.index("Needs your attention") :]
+    assert "Start this week&#39;s inventory check" not in attn
+    assert attn.index("Inventory check finished") < attn.index("Order 3 bags of cane sugar")
+    assert "Steps Claude took (5)" in attn[: attn.index("Order 3 bags")]
 
 
 @needs_node

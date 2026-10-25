@@ -711,3 +711,17 @@ def test_greeting_names_the_business_and_sidebar_drops_it() -> None:
     assert "<h1>Good afternoon, Sweet Rose Bakery</h1>" in out["main"]
     assert '<div class="brand"><b>Ledger</b></div>' in out["side"]
     assert "Sweet Rose Bakery" not in out["side"]
+
+
+@needs_node
+def test_rules_step_shows_saving_and_escaped_errors() -> None:
+    def step(onboard: dict) -> str:
+        out = run([{"data": data("pending"), "ui": {"view": "onboarding", "onboard": onboard}}])
+        return out[0]["main"]
+
+    busy = step({"step": 2, "saving": True})
+    assert 'data-onb="rules" disabled aria-busy="true">Saving…</button>' in busy
+    failed = step({"step": 2, "error": XSS})
+    assert '<p class="banner" role="alert">Your rules weren\'t saved: &lt;script&gt;' in failed
+    assert "<script" not in failed
+    assert ">Save rules</button>" in failed

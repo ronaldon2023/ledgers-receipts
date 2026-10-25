@@ -283,17 +283,14 @@ Portal.order = function (d, num) {
     Portal.legend + Portal.trail(steps, true) + '</section>';
 };
 Portal.POLICY_GROUPS = [
-  ["guard", "Guards", "Actions that are always blocked, whatever Claude decides."],
-  ["order", "Order policy", "What Claude may order, and from whom."],
-  ["payment", "Payment policy", "When Claude may pay, and where the money may go."],
-  ["budget", "Budget policy", "How much Claude may spend and what must stay in the bank."]
+  ["guard", "Guards"], ["order", "Order policy"], ["payment", "Payment policy"], ["budget", "Budget policy"]
 ];
 Portal.policies = function (d) {
   var esc = Portal.esc, pol = d.policies || { guards: [], policies: [] };
   var h = Portal.header("Policies", "The rules Claude must follow. Plain code checks them before every action; Claude can't change them.");
   Portal.POLICY_GROUPS.forEach(function (g) {
     var list = g[0] === "guard" ? pol.guards : pol.policies.filter(function (p) { return p.kind === g[0]; });
-    h += '<section aria-labelledby="pol-' + g[0] + '"><div class="sh"><h2 id="pol-' + g[0] + '">' + esc(g[1]) + '</h2><span>' + esc(g[2]) + '</span></div>' +
+    h += '<section aria-labelledby="pol-' + g[0] + '"><div class="sh"><h2 id="pol-' + g[0] + '">' + esc(g[1]) + '</h2></div>' +
       '<div class="tablewrap"><table><thead><tr><th style="width:62%">Rule</th><th>Setting</th></tr></thead><tbody>' +
       list.map(function (p) { return '<tr><td>' + esc(p.title) + '</td><td class="mono small">' + esc(p.setting) + '</td></tr>'; }).join("") + '</tbody></table></div></section>';
   });

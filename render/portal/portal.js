@@ -121,6 +121,8 @@ Portal.card = function (feed, c, ui) {
   // Approval and task cards skip the status line: their buttons say what's needed.
   var head = (c.level === "approve" || c.level === "task" ? '' : '<div class="metaRow"><span class="b ' + lv[1] + '">' + esc(lv[0]) + '</span><span>' + esc(c.context) + ' · ' + esc(Portal.time(c.at)) + '</span></div>') +
     '<h3>' + esc(c.title) + '</h3>' + (c.subtitle ? '<p class="muted">' + esc(c.subtitle) + '</p>' : '');
+  // leaving / entering animate the handoff from a finished run to the card it produced.
+  cls += (ui.leaving === c.id ? " leaving" : "") + ((ui.entering || {})[c.id] ? " entering" : "");
   var h = '<article class="card ' + cls + '">' + (c.amount_cents != null
     ? '<div class="cardhead"><div class="l">' + head + '</div><span class="amount">' + esc(Portal.money(c.amount_cents)) + '</span></div>' : head);
   if (c.body) h += '<p>' + esc(c.body) + '</p>';
@@ -128,11 +130,23 @@ Portal.card = function (feed, c, ui) {
   if (c.pair) h += '<div class="pair">' + c.pair.map(Portal.quote).join("") + '</div>';
   if (c.next_step) h += '<p><strong>Next step:</strong> ' + esc(c.next_step) + '</p>';
   var actions = c.actions || [], wait = ui.confirming && ui.confirming.card === c.id ? actions[ui.confirming.action] : null;
+  var run = ui.running && ui.running.card === c.id ? ui.running : null;
+  if (run) return h + Portal.running(actions[run.action], run.step) + '</article>';
   h += wait ? Portal.passkey(c.id, wait.confirm) : '<div class="actions">' + actions.map(function (a, i) {
     if (a.href) return '<a class="btn ghost linkbtn" href="' + esc(Portal.href(a.href)) + '">' + esc(a.label) + '</a>';
     return '<button type="button" class="btn' + (a.primary ? ' primary' : '') + '" data-card="' + esc(c.id) + '" data-action="' + i + '">' + esc(a.label) + '</button>';
   }).join("") + '</div>';
   return h + (Portal.pick(feed, c.steps).length ? Portal.stepsBlock(feed, c.steps) : '') + '</article>';
+};
+// While a run is going (e.g. Start check), the card shows what the MCP is doing, one step at a time.
+Portal.running = function (a, step) {
+  var esc = Portal.esc;
+  return '<div class="running" role="status" aria-live="polite"><div class="head"><span class="spinner" aria-hidden="true"></span>' +
+    esc(a.running || "Running") + '…</div><ol>' + (a.progress || []).map(function (p, i) {
+      var mark = i < step ? '<span class="ic-ok">✓</span>' : i === step ? '<span class="spinner sm" aria-hidden="true"></span>' : '<span class="dot"></span>';
+      return '<li class="' + (i < step ? "done" : i === step ? "now" : "todo") + '">' + mark + '<span>' + esc(p.label) +
+        (p.call ? ' <code>' + esc(p.call) + '</code>' : '') + '</span></li>';
+    }).join("") + '</ol></div>';
 };
 Portal.attention = function (feed, ui) {
   return (feed.attention || []).filter(function (c) { return !(ui.dismissed || {})[c.id]; });
@@ -448,6 +462,33 @@ if (typeof document !== "undefined") (function () {
     });
   }
   function go(state) { last = ""; set({ state: state, confirming: null }); load(); }
+  // Demo run: step through the action's progress list, then reveal what the run produced.
+  var timer = null;
+  function startRun(card, i) {
+    if (ui.running) return;
+    var steps = card.actions[i].progress.length;
+    ui.running = { card: card.id, action: i, step: 0 };
+    set({});
+    timer = setInterval(function () {
+      ui.running.step += 1;
+      if (ui.running.step >= steps) {
+        clearInterval(timer);
+        ui.leaving = card.id; // the finished card dissolves...
+        timer = setTimeout(function () { finishRun(card); }, 450);
+      }
+      set({});
+    }, 900);
+  }
+  function finishRun(card) {
+    ui.running = null;
+    ui.leaving = null;
+    ui.ran[card.id] = true;
+    ui.dismissed[card.id] = true;
+    ui.entering = {}; // ...and the cards it produced appear
+    (data.feed.attention || []).forEach(function (c) { if (c.requires === card.id) ui.entering[c.id] = true; });
+    set({});
+    timer = setTimeout(function () { ui.entering = null; }, 700);
+  }
   function onboardClick(t) {
     var o = ui.onboard, step = o.step || 0, act = t.getAttribute("data-onb");
     if (t.hasAttribute("data-copy")) {
@@ -478,11 +519,12 @@ if (typeof document !== "undefined") (function () {
     if (t.hasAttribute("data-feedview")) return set({ feedView: t.getAttribute("data-feedview") });
     var card = (data.feed.attention || []).filter(function (c) { return c.id === t.getAttribute("data-card"); })[0];
     var act = t.getAttribute("data-act");
-    if (act === "reset") { ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
+    if (act === "reset") { clearInterval(timer); clearTimeout(timer); ui.running = ui.leaving = ui.entering = null; ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
     if (act === "cancel") return set({ confirming: null });
     if (!card) return;
     var i = act === "passkey" && ui.confirming ? ui.confirming.action : +t.getAttribute("data-action"), a = card.actions[i];
     if (a.confirm && act !== "passkey") return set({ confirming: { card: card.id, action: i } });
+    if (a.progress) return startRun(card, i);
     if (a.run) ui.ran[card.id] = true; // e.g. Start check: reveals what that run produced
     if (a.dismiss || a.run) { ui.dismissed[card.id] = true; set({ confirming: null }); }
     else if (a.next) go(a.next);

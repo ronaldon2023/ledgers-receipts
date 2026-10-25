@@ -433,3 +433,42 @@ def test_declining_the_restock_places_nothing() -> None:
     html = page(data("pending"), "activities", ran={"att_inventory": True}, dismissed=d)
     assert "bakesupply.place_order" not in html
     assert "You declined" in html
+
+
+@needs_node
+def test_start_check_shows_the_mcp_running() -> None:
+    running = {"card": "att_inventory", "action": 0, "step": 1}
+    html = page(data("pending"), running=running)
+    card = html[html.index("Start this week&#39;s inventory check") :]
+    card = card[: card.index("</article>")]
+    assert 'role="status" aria-live="polite"' in card
+    assert "Running the check through the BakeSupply MCP…" in card
+    assert card.index("<code>inventory</code>") < card.index(
+        "<code>bakesupply.list_products</code>"
+    )
+    assert (
+        '<li class="done">' in card and '<li class="now">' in card and '<li class="todo">' in card
+    )
+    assert ">Start check<" not in card
+
+
+@needs_node
+def test_running_labels_are_escaped() -> None:
+    d = copy.deepcopy(data("pending"))
+    action = d["feed"]["attention"][0]["actions"][0]
+    action["running"] = XSS
+    action["progress"][0]["label"] = XSS
+    html = page(d, running={"card": "att_inventory", "action": 0, "step": 0})
+    assert "<script" not in html
+
+
+@needs_node
+def test_finished_check_dissolves_and_order_card_appears() -> None:
+    leaving = page(
+        data("pending"),
+        running={"card": "att_inventory", "action": 0, "step": 4},
+        leaving="att_inventory",
+    )
+    assert '<article class="card  leaving">' in leaving
+    entering = page(data("pending"), entering={"att_order": True}, **CHECKED)
+    assert '<article class="card ask entering">' in entering

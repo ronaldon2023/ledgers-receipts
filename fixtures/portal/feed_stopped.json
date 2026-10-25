@@ -132,7 +132,26 @@
         {
           "label": "Start check",
           "primary": true,
-          "run": true
+          "run": true,
+          "running": "Running the check through the BakeSupply MCP",
+          "progress": [
+            {
+              "label": "Counting your stock",
+              "call": "inventory"
+            },
+            {
+              "label": "Asking Flour Co for products and stock",
+              "call": "bakesupply.list_products"
+            },
+            {
+              "label": "Getting prices for anything low",
+              "call": "bakesupply.get_price"
+            },
+            {
+              "label": "Checking your order and budget policies",
+              "call": "check_policy"
+            }
+          ]
         },
         {
           "label": "Not now",

@@ -22,7 +22,7 @@ make test
 - `render/`: renders `receipt.json` as a one-page HTML receipt
 - `contracts/`: the shared JSON schemas and samples
 
-See `CLAUDE.md` for how the team works with Claude in this repo.
+The build plan is in `docs/PLAN.md`. See `CLAUDE.md` for how the team works with Claude in this repo.
 
 ## License
 

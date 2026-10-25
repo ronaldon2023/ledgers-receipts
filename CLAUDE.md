@@ -2,8 +2,8 @@
 
 Receipts makes an AI agent's work auditable: hooks log every tool call into a
 hash chain, a guard blocks risky actions, and plain code checks the log against
-the bakery database. The AI never grades itself. Full plan: the team doc
-"The Ledgers: Receipts build plan".
+the bakery database. The AI never grades itself. Full plan: `docs/PLAN.md`
+(read your owner section before starting).
 
 Many of us are new to this. Work in small, explained steps.
 
@@ -16,7 +16,7 @@ someone else's half-finished code.
 | --- | --- | --- |
 | `bakery/` | Person 1 | Mock bakery MCP server, seed data, faults |
 | `claims/` | Person 2 | Claim extractor (the only LLM step) |
-| `render/` | Person 3 | Receipt HTML page |
+| `render/` | Lana (UX) | Receipt HTML page |
 | `receipts/` | Ronaldo | Guard, log masking, hash chain, verifier |
 | `contracts/` | Everyone | The 4 shared JSON shapes. Changes need team agreement |
 

@@ -1,7 +1,11 @@
-"""Create and seed bakesupply.db. Run with: python -m bakesupply.seed (path: $BAKESUPPLY_DB)"""
+"""Create and seed bakesupply.db. Run with: python -m bakesupply.seed (path: $BAKESUPPLY_DB)
+
+BakeSupply plays Flour Co: same name, email, SKUs and units as bakery/seed.py.
+"""
 
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 DB_PATH = Path(
@@ -9,10 +13,9 @@ DB_PATH = Path(
 )
 
 SCHEMA = """
-CREATE TABLE ingredients (
-    name TEXT PRIMARY KEY,
-    sku TEXT NOT NULL UNIQUE,
-    pack_size TEXT NOT NULL,
+CREATE TABLE products (
+    sku TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
     unit TEXT NOT NULL,
     price_cents INTEGER NOT NULL CHECK (price_cents > 0),
     stock INTEGER NOT NULL CHECK (stock >= 0),
@@ -21,7 +24,7 @@ CREATE TABLE ingredients (
 );
 CREATE TABLE orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ingredient TEXT NOT NULL REFERENCES ingredients(name),
+    sku TEXT NOT NULL REFERENCES products(sku),
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price_cents INTEGER NOT NULL,
     total_cents INTEGER NOT NULL,
@@ -29,26 +32,24 @@ CREATE TABLE orders (
 );
 """
 
-SUPPLIER = "BakeSupply"
-SUPPLIER_EMAIL = "orders@bakesupply.example"
+SUPPLIER = "Flour Co"
+SUPPLIER_EMAIL = "billing@flourco.example"
 
-# (name, sku, pack_size, unit, price per unit in cents, stock). SKU and pack size are catalog
-# info only; orders are placed by ingredient name, in units.
+# (sku, name, unit, price per unit in cents, stock)
 CATALOG = [
-    ("flour", "FLOUR-25KG", "25 kg bag", "kg", 120, 500),
-    ("sugar", "SUGAR-25KG", "25 kg bag", "kg", 95, 300),
-    ("butter", "BUTTER-5KG", "5 kg block", "kg", 650, 100),
-    ("eggs", "EGGS-30CT", "30-count tray", "dozen", 380, 200),
+    ("FLR-AP-50", "All-purpose flour, 50 lb bag", "bag", 5000, 500),
+    ("FLR-BR-50", "Bread flour, 50 lb bag", "bag", 5000, 200),
+    ("SUG-CN-50", "Cane sugar, 50 lb bag", "bag", 4000, 150),
 ]
 
 
 def seed(db_path: Path = DB_PATH) -> None:
     """Drop and recreate the database with the starting inventory."""
     db_path.unlink(missing_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.executescript(SCHEMA)
         conn.executemany(
-            "INSERT INTO ingredients VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)",
             [(*row, SUPPLIER, SUPPLIER_EMAIL) for row in CATALOG],
         )
 

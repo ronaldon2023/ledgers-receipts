@@ -1,12 +1,11 @@
-import asyncio
+import sqlite3
 from pathlib import Path
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
 
 from bakesupply import server
-from bakesupply.seed import seed
-from bakesupply.server import get_price, list_ingredients, list_orders, place_order
+from bakesupply.seed import SUPPLIER, SUPPLIER_EMAIL, seed
+from bakesupply.server import MAX_QUANTITY, get_price, list_orders, list_products, place_order
 
 
 @pytest.fixture
@@ -16,61 +15,105 @@ def db(tmp_path: Path) -> Path:
     return path
 
 
-def test_seed_has_flour(db: Path) -> None:
-    names = {i["name"] for i in list_ingredients(db)}
-    assert {"flour", "sugar", "butter", "eggs"} <= names
+def stock(db: Path, sku: str) -> int:
+    return next(p["stock"] for p in list_products(db) if p["sku"] == sku)
+
+
+def test_catalog_matches_the_bakerys_vendor_records(db: Path) -> None:
+    products = {p["sku"]: p for p in list_products(db)}
+    assert {"FLR-AP-50", "FLR-BR-50", "SUG-CN-50"} == set(products)
+    flour = products["FLR-AP-50"]
+    assert flour["name"] == "All-purpose flour, 50 lb bag"
+    assert flour["unit"] == "bag"
+    assert flour["price_cents"] == 5000
+    assert flour["supplier"] == SUPPLIER == "Flour Co"
+    assert flour["supplier_email"] == SUPPLIER_EMAIL == "billing@flourco.example"
 
 
 def test_price_is_integer_cents(db: Path) -> None:
-    quote = get_price("flour", 10, db)
-    assert quote["unit_price_cents"] == 120
-    assert quote["total_cents"] == 1200
-    assert quote["in_stock"] is True
+    quote = get_price("FLR-AP-50", 12, db)
+    assert quote == {
+        "ok": True,
+        "sku": "FLR-AP-50",
+        "quantity": 12,
+        "unit": "bag",
+        "unit_price_cents": 5000,
+        "total_cents": 60000,
+        "in_stock": True,
+    }
 
 
-def test_ingredient_name_is_case_insensitive(db: Path) -> None:
-    assert get_price("Flour", 1, db)["ingredient"] == "flour"
+def test_sku_is_case_and_space_insensitive(db: Path) -> None:
+    assert get_price(" flr-ap-50 ", 1, db)["sku"] == "FLR-AP-50"
 
 
 def test_order_records_and_reduces_stock(db: Path) -> None:
-    order = place_order("flour", 25, db)
-    assert order["total_cents"] == 3000
-    assert list_orders(db) == [order]
-    flour = next(i for i in list_ingredients(db) if i["name"] == "flour")
-    assert flour["stock"] == 475
+    order = place_order("FLR-AP-50", 30, db)
+    assert order["ok"] is True
+    assert order["id"] == "ord_1"
+    assert order["total_cents"] == 150000
+    assert list_orders(db) == [{k: v for k, v in order.items() if k != "ok"}]
+    assert stock(db, "FLR-AP-50") == 470
 
 
-def test_out_of_stock_is_rejected_and_changes_nothing(db: Path) -> None:
-    with pytest.raises(ValueError, match="not enough"):
-        place_order("butter", 101, db)
+def test_out_of_stock_is_refused_and_changes_nothing(db: Path) -> None:
+    result = place_order("SUG-CN-50", 151, db)
+    assert result["ok"] is False
+    assert "not enough SUG-CN-50" in result["error"]
     assert list_orders(db) == []
-    butter = next(i for i in list_ingredients(db) if i["name"] == "butter")
-    assert butter["stock"] == 100
+    assert stock(db, "SUG-CN-50") == 150
 
 
-@pytest.mark.parametrize("quantity", [0, -5])
-def test_invalid_quantity(db: Path, quantity: int) -> None:
-    with pytest.raises(ValueError, match="positive"):
-        get_price("flour", quantity, db)
-    with pytest.raises(ValueError, match="positive"):
-        place_order("flour", quantity, db)
+def test_ordering_exactly_the_remaining_stock_is_accepted(db: Path) -> None:
+    assert place_order("SUG-CN-50", 150, db)["ok"] is True
+    assert stock(db, "SUG-CN-50") == 0
+    assert place_order("SUG-CN-50", 1, db)["ok"] is False
 
 
-def test_unknown_ingredient(db: Path) -> None:
-    with pytest.raises(ValueError, match="unknown"):
-        place_order("unicorn dust", 1, db)
+@pytest.mark.parametrize(
+    "quantity", [0, -5, True, False, "3", 2.0, 2.5, None, MAX_QUANTITY + 1, 10**30]
+)
+def test_quantity_must_be_a_whole_number_in_range(db: Path, quantity: object) -> None:
+    for call in (get_price, place_order):
+        result = call("FLR-AP-50", quantity, db)
+        assert result["ok"] is False
+        assert "whole number" in result["error"]
+    assert list_orders(db) == []
+    assert stock(db, "FLR-AP-50") == 500
 
 
-def test_catalog_lists_bakesupply_sku_and_supplier(db: Path) -> None:
-    flour = next(i for i in list_ingredients(db) if i["name"] == "flour")
-    assert flour["sku"] == "FLOUR-25KG"
-    assert flour["pack_size"] == "25 kg bag"
-    assert flour["supplier"] == "BakeSupply"
-    assert flour["supplier_email"] == "orders@bakesupply.example"
+def test_the_largest_allowed_quantity_gets_a_quote_not_an_overflow(db: Path) -> None:
+    quote = get_price("FLR-AP-50", MAX_QUANTITY, db)
+    assert quote["ok"] is True
+    assert quote["total_cents"] == 50_000_000
+    assert quote["in_stock"] is False
 
 
-def test_rejected_order_explains_why_over_mcp(db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unknown_sku_is_refused(db: Path) -> None:
+    for call in (get_price, place_order):
+        result = call("NOPE-1", 1, db)
+        assert result == {"ok": False, "error": "unknown sku: NOPE-1"}
+
+
+def test_connections_are_closed(db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    opened: list[sqlite3.Connection] = []
+    real = sqlite3.connect
+
+    def spy(*args: object, **kwargs: object) -> sqlite3.Connection:
+        conn = real(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(server.sqlite3, "connect", spy)
+    place_order("FLR-AP-50", 1, db)
+    list_orders(db)
+    assert opened
+    for conn in opened:
+        with pytest.raises(sqlite3.ProgrammingError):
+            conn.execute("SELECT 1")
+
+
+def test_tools_never_raise(db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "DB_PATH", db)
-    call = server.mcp.call_tool("place_order", {"ingredient": "butter", "quantity": 101})
-    with pytest.raises(ToolError, match="not enough butter"):
-        asyncio.run(call)
+    assert server._get_price("NOPE", 1)["ok"] is False
+    assert server._place_order("FLR-AP-50", "3")["ok"] is False

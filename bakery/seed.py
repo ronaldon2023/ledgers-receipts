@@ -73,8 +73,8 @@ VENDORS = [("V-1", "Flour Co", "billing@flourco.example", "000123454471")]
 
 # PO-2033 is earlier this month, so the budget check has real spend: $2,140 + $800 = $2,940.
 ORDERS = [
-    ("PO-2033", "V-1", "2026-10-03", "received", 214000),
-    ("PO-2041", "V-1", "2026-10-20", "placed", 80000),
+    ("PO-2033", "V-1", "2026-10-03T10:20:00-07:00", "received", 214000),
+    ("PO-2041", "V-1", "2026-10-20T09:12:00-07:00", "placed", 80000),
 ]
 
 ORDER_ITEMS = [

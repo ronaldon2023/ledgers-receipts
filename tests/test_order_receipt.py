@@ -1,8 +1,8 @@
 """Checks on the draft order receipt sample in docs/mock.
 
-The schema catches shape and unmasked account numbers; ledger_problems holds the verdict rules; the tests here also
-catch what JSON Schema cannot express: dangling or duplicate references, wrong sums and drift
-from the seed.
+The schema catches shape and unmasked account numbers; ledger_problems holds the verdict
+rules; the tests here also catch what JSON Schema cannot express: dangling or duplicate
+references, wrong sums and drift from the seed.
 """
 
 import copy
@@ -81,7 +81,7 @@ def ledger_problems(receipt: dict) -> list[str]:
     problems = []
     verdict, summary = receipt["verdict"], receipt["summary_check"]
     statuses = [c["status"] for c in receipt["checks"]]
-    stages = {e["stage"]: e["status"] for e in receipt["events"]}
+    events = receipt["events"]
     payment = receipt["payment"]["status"]
     broken = any(not s["ok"] for s in receipt["sessions"])
     if broken != (verdict == "UNTRUSTED"):
@@ -92,7 +92,7 @@ def ledger_problems(receipt: dict) -> list[str]:
             problems.append("VERIFIED with a check or the summary not verified")
         if payment not in ("not_started", "sent"):
             problems.append(f"VERIFIED with payment {payment}")
-        if any(s not in ("done", "not_reached") for s in stages.values()):
+        if any(e["status"] not in ("done", "not_reached") for e in events):
             problems.append("VERIFIED with a stage blocked or failed")
         if receipt.get("owner_action", {}).get("needed"):
             problems.append("VERIFIED with an owner action pending")
@@ -102,8 +102,14 @@ def ledger_problems(receipt: dict) -> list[str]:
         problems.append("summary checks on an unchecked summary")
     if ("error" in summary) != (summary["status"] == "error"):
         problems.append("summary error message does not match its status")
-    if stages.get("payment_sent", "not_reached") != STAGE_FOR_PAYMENT[payment]:
-        problems.append(f"payment {payment} but payment_sent is {stages.get('payment_sent')}")
+    # Every row counts, so a duplicate stage cannot hide a blocked row behind a done one.
+    sent = [e["status"] for e in events if e["stage"] == "payment_sent"] or ["not_reached"]
+    if any(s != STAGE_FOR_PAYMENT[payment] for s in sent):
+        problems.append(f"payment {payment} but payment_sent is {sent}")
+    for e in events:
+        logged = e["source"] == "log" and e["status"] in ("done", "blocked", "failed")
+        if logged and not (e["at"] and e["checks"]):
+            problems.append(f"logged stage {e['stage']} without a time or a check")
     return problems
 
 
@@ -264,7 +270,7 @@ def _drop_summary_checks(receipt: dict) -> None:
         row["checks"] = [i for i in row["checks"] if i not in summary]
 
 
-# Each case is a receipt that contradicts itself; the schema must reject every one.
+# Each case is a receipt that contradicts itself; the schema or ledger_problems must reject it.
 CONTRADICTIONS = {
     "verified_with_red_check": _set("verdict", "VERIFIED"),
     "verified_with_blocked_payment": _steps(_all_verified, _set("verdict", "VERIFIED")),
@@ -293,6 +299,10 @@ CONTRADICTIONS = {
     "payment_failed_but_stage_blocked": _set("payment.status", "failed"),
     "error_text_on_checked_summary": _set("summary_check.error", "extractor timed out"),
     "unknown_field_on_bill": _set("bill.vendor_invoice_number", "FC-7781"),
+    "short_checks_version": _set("checks_version", "1f635c"),
+    "short_policy_hash": _set("policy.sha256", "9cd9d16c"),
+    "number_in_inputs": _set("checks.1.inputs.order_cents", 80000),
+    "account_in_inputs": _set("checks.4.inputs.asked_for", "9876543210"),
 }
 
 # Each case breaks one VERIFIED condition on an otherwise clean order, so every clause is pinned.
@@ -300,6 +310,10 @@ VERIFIED_BREAKS = {
     "owner_action_needed": _set("owner_action", {"needed": True}),
     "stage_failed": _set("events.0.status", "failed"),
     "check_flagged": _set("checks.0.status", "flagged"),
+    "check_rerun_mismatch": _set("checks.0.status", "rerun_mismatch"),
+    "blocked_row_behind_done": lambda r: r["events"].insert(
+        5, {**copy.deepcopy(r["events"][5]), "status": "blocked"}
+    ),
     "summary_not_checked": _steps(
         _drop_summary_checks, _set("summary_check.status", "not_checked")
     ),

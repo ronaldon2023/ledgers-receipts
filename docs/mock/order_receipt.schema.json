@@ -300,32 +300,6 @@
         },
         "allOf": [
           {
-            "if": {
-              "properties": {
-                "source": {
-                  "const": "log"
-                },
-                "status": {
-                  "enum": [
-                    "done",
-                    "blocked",
-                    "failed"
-                  ]
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "at": {
-                  "$ref": "#/$defs/text"
-                },
-                "checks": {
-                  "minItems": 1
-                }
-              }
-            }
-          },
-          {
             "description": "A block or failure is always logged",
             "if": {
               "properties": {

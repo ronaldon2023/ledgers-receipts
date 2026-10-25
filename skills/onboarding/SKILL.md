@@ -6,8 +6,8 @@ description: Set up Receipts for a small business. Asks the owner which bookkeep
 # Receipts onboarding
 
 Ask the owner a few questions and save the answers to `receipts-onboarding.json` in the project
-folder. Today only the approval amount is used: payments over it ask for the owner's yes. The
-rest is a record for later, while the team decides where payment rules finally live. Say that to
+folder. Today only the approval amount is used: bakery bill payments over it ask for the owner's
+yes. Payments made through other tools aren't checked yet. The rest is a record for later, while the team decides where payment rules finally live. Say that to
 the owner in one sentence before you start, so they know why you're asking.
 
 ## Before you ask
@@ -85,5 +85,5 @@ integer cents, unknown values as `null`):
 ```
 
 End by telling the owner, in plain words, what was saved. Be exact about what is enforced today:
-any payment over the approval amount they chose stops and asks for their yes before it goes
-out. The budget and supplier list are saved for later and not checked yet.
+any bakery bill payment over the approval amount they chose stops and asks for their yes before
+it goes out. Payments through other tools, the budget and the supplier list aren't checked yet.

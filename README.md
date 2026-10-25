@@ -15,24 +15,28 @@ Design mock with sample data (see `docs/mock/`). Feedback welcome.
 
 ## Install the plugin
 
-Receipts runs as a Claude Code plugin on top of Anthropic's Small Business plugin. In a
-Claude Code session, run these three commands in this order:
+Receipts runs as a Claude Code plugin on top of Anthropic's Small Business plugin. In your
+terminal, run these three commands in this order:
 
-```
-/plugin marketplace add anthropics/knowledge-work-plugins
-/plugin marketplace add ronaldon2023/ledgers-receipts
-/plugin install ledgers-receipts@the-ledgers
+```sh
+claude plugin marketplace add anthropics/knowledge-work-plugins
+claude plugin marketplace add ronaldon2023/ledgers-receipts
+claude plugin install ledgers-receipts@the-ledgers
 ```
 
 The first line adds the marketplace that holds the Small Business plugin. Installing
 Receipts then installs the Small Business plugin with it. If you skip that line, the install
 finishes with a warning that `small-business@knowledge-work-plugins` was not installed, and
-Receipts won't load until you add that marketplace.
+Receipts won't load. Run the first line then, and it installs the missing plugin.
 
-- No GitHub SSH key on your machine? Start Claude Code with `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1`
-  set, so the marketplaces download over HTTPS.
-- To get the latest version later, run `/plugin marketplace update the-ledgers`.
-- Check it worked: `/plugin` lists both `ledgers-receipts` and `small-business` as enabled.
+- Already inside Claude Code? The same commands work with `/plugin` in place of `claude plugin`.
+  There, `/plugin install` opens the plugin's details first: choose a scope and confirm.
+- No GitHub SSH key on your machine? Start Claude Code with
+  `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1 claude`, so the marketplaces download over HTTPS.
+- To get the latest versions later, run `claude plugin marketplace update the-ledgers` and
+  `claude plugin marketplace update knowledge-work-plugins`.
+- Check it worked: `claude plugin list` shows both `ledgers-receipts@the-ledgers` and
+  `small-business@knowledge-work-plugins` with `Status: ✔ enabled`.
 
 ## Team setup (about 5 minutes)
 

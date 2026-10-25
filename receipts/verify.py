@@ -175,6 +175,11 @@ def _receipt(bill_id: str, attempts: list[dict], rec: dict, status: chain.ChainS
         "checks": checks,
         "summary_check": {"status": "not_checked"},
         "chain": {"ok": status.ok, "entries": status.entries, "head": status.head},
+        # One hash chain covers every session; each session reports the chain's state.
+        "sessions": [
+            {"session": sid, "ok": status.ok, "entries": status.entries, "head": status.head}
+            for sid in dict.fromkeys(a.get("session", "") for a in attempts)
+        ],
     }
 
 

@@ -59,6 +59,9 @@ def test_receipts_match_the_live_run(run: tuple[Path, Path]) -> None:
     }
     assert blocked == {"C4", "C8"}
     assert receipts["PO-2038"]["payment"]["status"] == "blocked"
+    assert paid["sessions"] == [
+        {"session": "s1", "ok": True, "entries": 3, "head": paid["chain"]["head"]}
+    ]
     assert "bank account" in receipts["PO-2038"]["owner_action"]["title"]
 
 

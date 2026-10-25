@@ -98,3 +98,14 @@ def test_bill_sender_and_pay_to_match_vendor_on_file(tmp_path: Path) -> None:
     assert rows == [
         ("billing@flourco.example", "billing@flourco.example", "000123454471", "000123454471")
     ]
+
+
+def test_policies_and_budget_numbers(tmp_path: Path) -> None:
+    db = tmp_path / "bakery.db"
+    seed(db)
+    limits = dict(query(db, "SELECT id, limit_cents FROM policies"))
+    assert limits["POL-PAY-THRESHOLD"] == 50000
+    spent = query(db, "SELECT SUM(total_cents) FROM orders WHERE order_date LIKE '2026-10-%'")
+    assert spent == [(294000,)]  # $2,940 of the $3,000 budget
+    (balance,) = query(db, "SELECT balance_cents FROM accounts WHERE id = 'ACC-OPS'")[0]
+    assert balance - 80000 >= limits["POL-BANK-FLOOR"]

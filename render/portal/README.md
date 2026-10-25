@@ -9,7 +9,9 @@ Claude does the work; plain code decides every status. The portal only renders J
 python -m render.portal          # opens http://127.0.0.1:8000/
 ```
 
-Add `?state=pending|stopped|paid|declined` to the URL to jump to a demo state.
+Add `?state=pending|stopped|paid|declined` to the URL to jump to a demo state: BILL-07 waits for
+your approval (`pending`), Claude's run has ended and its summary wrongly says BILL-08 and BILL-09
+were paid (`stopped`), you approved BILL-07 (`paid`) or declined it (`declined`).
 
 `?state=live` shows a real run: after Claude works, `python -m receipts.verify` writes `feed_live.json` and `receipt_live_<order>.json` here from the log and `bakery.db` (git-ignored).
 "Restart demo" goes back to `pending`.
@@ -18,7 +20,7 @@ Add `?state=pending|stopped|paid|declined` to the URL to jump to a demo state.
 
 | File | What it is |
 | --- | --- |
-| `receipt_PO-2041_<state>.json` | The order's one receipt as it stands in each demo state (main's schema: created at submit, updated each step). `stopped` is `docs/mock/order_receipt.json` unchanged |
+| `receipt_<order>_<state>.json` | Each order's one receipt as it stands in each demo state (main's schema: created at submit, updated each step). PO-2041 / BILL-07 is the happy flow: every check passes. PO-2038 / BILL-08 (asks for a new bank account, check C4) and PO-2039 / BILL-09 (look-alike sender, check C8) are stopped, matching `bakery/seed.py` |
 | `feed_<state>.json` | **Proposed, not a team contract yet.** The running list the dashboard needs: attention cards, events, steps with timestamps, glance numbers, orders |
 | `policies.json` | Policies page. ids, kinds, titles and limits match `POLICIES` in `bakery/seed.py` |
 

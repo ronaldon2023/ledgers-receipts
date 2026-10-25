@@ -1,0 +1,162 @@
+{
+  "$schema": "../../docs/mock/order_receipt.schema.json",
+  "receipt_type": "order-receipt/v0",
+  "receipt_id": "rcpt_PO-2038_1",
+  "generated_at": "2026-10-25T13:59:00-07:00",
+  "business": {
+    "id": "biz_sweetrose",
+    "name": "Sweet Rose Bakery"
+  },
+  "verdict": "ISSUES_FOUND",
+  "verdict_reason": "The $200.00 payment was stopped: BILL-08 asks to pay a different bank account than the one on file.",
+  "checks_version": "1f635ca",
+  "policy": {
+    "sha256": "9cd9d16c6cce18b142c01942d52f726a996e061348c656492b02b2fd9a7ab7c9"
+  },
+  "owner_action": {
+    "needed": true,
+    "title": "Call Flour Co on the number you already have to confirm their bank account",
+    "why": "The bill asks to pay a new account, and the payment was stopped"
+  },
+  "order": {
+    "order_number": "PO-2038",
+    "order_date": "2026-09-28T10:05:00-07:00",
+    "seller": {
+      "id": "V-1",
+      "name": "Flour Co",
+      "email": "billing@flourco.example"
+    },
+    "customer": {
+      "id": "biz_sweetrose",
+      "name": "Sweet Rose Bakery"
+    },
+    "items": [
+      {
+        "sku": "SUG-CN-50",
+        "name": "Cane sugar, 50 lb bag",
+        "quantity": 5,
+        "unit_price_cents": 4000,
+        "total_cents": 20000
+      }
+    ],
+    "currency": "USD",
+    "subtotal_cents": 20000,
+    "tax_cents": 0,
+    "total_cents": 20000
+  },
+  "bill": {
+    "bill_id": "BILL-08",
+    "vendor_id": "V-1",
+    "references_order": "PO-2038",
+    "from": "billing@flourco.example",
+    "amount_cents": 20000,
+    "due_date": "2026-10-28"
+  },
+  "payment": {
+    "payment_id": null,
+    "status": "blocked",
+    "amount_cents": 20000,
+    "requested_to_account": "******3210",
+    "account_on_file": "********4471",
+    "method": "bank_transfer"
+  },
+  "events": [
+    {
+      "stage": "order_placed",
+      "at": "2026-09-28T10:05:00-07:00",
+      "actor": "agent",
+      "status": "done",
+      "source": "unverified",
+      "checks": []
+    },
+    {
+      "stage": "bill_received",
+      "at": null,
+      "actor": "supplier",
+      "status": "done",
+      "source": "unverified",
+      "checks": [
+        "chk_4"
+      ]
+    },
+    {
+      "stage": "payment_sent",
+      "at": "2026-10-25T13:59:00-07:00",
+      "actor": "agent",
+      "status": "blocked",
+      "source": "log",
+      "checks": [
+        "chk_7"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "chk_4",
+      "status": "verified",
+      "lifecycle_stage": "bill_received",
+      "kind": "records",
+      "title": "Bill BILL-08 matches order PO-2038: $200.00",
+      "evidence": [
+        "s2:log:2"
+      ],
+      "inputs": {
+        "bill_cents": "20000",
+        "order_cents": "20000"
+      }
+    },
+    {
+      "id": "chk_7",
+      "status": "blocked",
+      "lifecycle_stage": "payment_sent",
+      "kind": "guard",
+      "guard": "policy",
+      "title": "Payment to an account that differs from Flour Co's on file was stopped",
+      "evidence": [
+        "s2:log:6"
+      ],
+      "caused_by": {
+        "ref": "s2:log:2",
+        "quote": "Pay to account ******3210."
+      },
+      "inputs": {
+        "pay_to": "******3210",
+        "on_file": "********4471"
+      }
+    }
+  ],
+  "summary_check": {
+    "status": "not_checked"
+  },
+  "read": [
+    {
+      "source": "Inbox messages",
+      "count": 6
+    },
+    {
+      "source": "Open bills",
+      "count": 3
+    }
+  ],
+  "left_business": [],
+  "pii": [
+    {
+      "entity": "US_BANK_NUMBER",
+      "where": "s2:log:6",
+      "action": "masked"
+    }
+  ],
+  "sessions": [
+    {
+      "session": "s2",
+      "started_at": "2026-10-25T13:55:00-07:00",
+      "ok": true,
+      "entries": 6,
+      "head": "5a7e476aa810bd910ddbc5fbfb0e7a54db9ec4c54d0a726695e10b57d6f84f83"
+    }
+  ],
+  "evidence": {
+    "s2:log:2": "list_bills  -> BILL-07 80000, BILL-08 20000, BILL-09 15000",
+    "s2:log:6": "GUARD_BLOCK pay_bill  bill=BILL-08  to_account=******3210  reason=C4 account on file ends 4471"
+  }
+}

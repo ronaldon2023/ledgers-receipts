@@ -79,18 +79,43 @@ def page(d: dict, view: str = "dashboard", **ui) -> str:
 
 
 @pytest.mark.parametrize("state", STATES)
-def test_receipts_match_schema(state: str) -> None:
+@pytest.mark.parametrize("order", ["PO-2041", "PO-2038", "PO-2039"])
+def test_receipts_match_schema(state: str, order: str) -> None:
     validator = Draft202012Validator(SCHEMA, format_checker=FormatChecker())
-    receipt = load(f"receipt_PO-2041_{state}.json")
+    receipt = load(f"receipt_{order}_{state}.json")
     assert [e.message for e in validator.iter_errors(receipt)] == []
-    assert receipt["receipt_id"] == SAMPLE["receipt_id"]  # one receipt per order, updated in place
+    assert receipt["order"]["order_number"] == order
+    assert receipt["receipt_id"] == f"rcpt_{order}_1"  # one receipt per order, updated in place
 
 
-def test_stopped_receipt_is_mains_sample() -> None:
+def test_receipts_keep_mains_sample_shape() -> None:
+    # The demo moved the bad cases off BILL-07, so the receipt no longer equals main's sample,
+    # but it keeps the sample's fields, ids and versions.
     mine = load("receipt_PO-2041_stopped.json")
-    assert {k: v for k, v in mine.items() if k != "$schema"} == {
-        k: v for k, v in SAMPLE.items() if k != "$schema"
-    }
+    assert mine.keys() == SAMPLE.keys()
+    for key in ["receipt_id", "business", "checks_version", "policy", "order", "bill"]:
+        assert mine[key] == SAMPLE[key], key
+
+
+@pytest.mark.parametrize("state", STATES)
+def test_bill_07_is_the_happy_flow(state: str) -> None:
+    receipt = load(f"receipt_PO-2041_{state}.json")
+    assert receipt["verdict"] == "VERIFIED"
+    assert {c["status"] for c in receipt["checks"]} == {"verified"}
+    assert receipt["payment"]["status"] == ("sent" if state == "paid" else "not_started")
+    assert "3210" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("state", STATES)
+def test_bills_08_and_09_are_the_bad_cases(state: str) -> None:
+    b08, b09 = load(f"receipt_PO-2038_{state}.json"), load(f"receipt_PO-2039_{state}.json")
+    for r in (b08, b09):
+        assert r["verdict"] == "ISSUES_FOUND" and r["payment"]["status"] == "blocked"
+    assert b08["payment"]["requested_to_account"] != b08["payment"]["account_on_file"]
+    assert b09["bill"]["from"] == "billing@flourco-payments.example"
+    assert b09["payment"]["requested_to_account"] == b09["payment"]["account_on_file"]
+    claims = state in ("stopped", "paid")  # Claude's summary says they were paid
+    assert any(c["status"] == "false_claim" for c in b08["checks"]) is claims
 
 
 def test_policies_match_seed() -> None:
@@ -200,13 +225,13 @@ def test_unknown_status_renders_as_unknown() -> None:
 @needs_node
 def test_data_is_escaped() -> None:
     d = copy.deepcopy(data("stopped"))
-    stopped = next(c for c in d["feed"]["attention"] if c["id"] == "att_stopped")
+    stopped = next(c for c in d["feed"]["attention"] if c["id"] == "att_bill08")
     d["feed"]["events"][0]["title"] = XSS
     stopped["quote"]["text"] = XSS
     d["feed"]["steps"][0]["quote"] = XSS
     d["receipt"]["checks"][0]["title"] = XSS
     d["policies"]["policies"][0]["title"] = XSS
-    stopped["actions"][1]["href"] = "javascript:alert(1)"
+    stopped["actions"][0]["href"] = "javascript:alert(1)"
     html = "".join(page(d, v) for v in ["dashboard", "activities", "order/PO-2041", "policies"])
     assert "<script" not in html
     assert "javascript:" not in html
@@ -227,12 +252,20 @@ def test_bank_numbers_show_last_four_only() -> None:
 @needs_node
 def test_by_order_groups_each_order() -> None:
     html = page(data("stopped"), "activities", feedView="order", **CHECKED)
-    po, restock, other = (
-        html.index(s) for s in ["Order PO-2041", "Order PO-2042", "Not tied to an order"]
+    po, po38, po39, restock, other = (
+        html.index(s)
+        for s in [
+            "Order PO-2041",
+            "Order PO-2038",
+            "Order PO-2039",
+            "Order PO-2042",
+            "Not tied to an order",
+        ]
     )
-    assert po < restock < other
-    for title in ["Bill BILL-07 from Flour Co arrived", "Payment of $800.00 to Flour Co stopped"]:
-        assert po < html.index(title) < restock
+    assert po < po38 < po39 < restock < other
+    assert po < html.index("Bill BILL-07 from Flour Co arrived") < po38
+    assert po38 < html.index("Payment of $200.00 for BILL-08 stopped") < po39
+    assert po39 < html.index("Payment of $150.00 for BILL-09 stopped") < restock
     assert restock < html.index("Claude asks to order 3 bags of cane sugar") < other
     assert other < html.index("Email to billing-help@outside.example stopped")
 
@@ -255,15 +288,17 @@ def test_approval_card_has_no_check_list() -> None:
 
 
 @needs_node
-def test_stopped_trail_shows_pay_bill_then_guard() -> None:
+def test_stopped_trail_shows_pay_bill_then_check() -> None:
     html = page(data("stopped"))
-    card = html[html.index('<article class="card stop">') :]
-    card = card[: card.index("</article>")]
-    flag, call, guard = (
-        card.index(s) for s in ["chk_5", "pay_bill · bill=BILL-07", "Guard: the account"]
-    )
-    assert flag < call < guard
-    assert card.index(">Blocked<") > call
+    for bill, check in [("BILL-08", "Check C4"), ("BILL-09", "Check C8")]:
+        start = html.index(f"payment for {bill} was not sent")
+        card = html[html.rindex("<article", 0, start) : html.index("</article>", start)]
+        assert 'class="card stop"' in card
+        listed, call, why = (
+            card.index(s) for s in ["list_bills · 3 open bills", f"pay_bill · bill={bill}", check]
+        )
+        assert listed < call < why
+        assert card.index(">Blocked<") > call
 
 
 @needs_node
@@ -300,7 +335,8 @@ def test_approval_cards_have_no_status_line() -> None:
     html = page(data("pending"), **CHECKED)
     attn = html[html.index("Needs your attention") :]
     assert attn.count('<article class="card ask">') == 2
-    assert 'class="metaRow"' not in attn
+    for part in attn.split('<article class="card ask">')[1:]:
+        assert 'class="metaRow"' not in part[: part.index("</article>")]
     stopped = page(data("stopped"))
     assert '<span class="b b-stop">Stopped</span>' in stopped
     assert "<b>Ledger</b>" in html
@@ -611,11 +647,13 @@ def test_bill_card_has_no_subtitle() -> None:
 
 
 @needs_node
-def test_paid_state_summary_card_is_past_tense() -> None:
-    html = page(data("paid"))
-    assert "Claude says Flour Co was paid. It wasn&#39;t." not in html
-    assert "said Flour Co was paid before it was" in html
-    assert "Don&#39;t tell Flour Co" not in html
+def test_summary_card_names_the_unpaid_bills() -> None:
+    paid, stopped = page(data("paid")), page(data("stopped"))
+    for html in (paid, stopped):
+        assert "Claude says BILL-08 and BILL-09 were paid. They weren&#39;t." in html
+    assert "Only BILL-07 was paid (pay_1)." in paid
+    assert "BILL-07 is waiting for your approval." in stopped
+    assert "BILL-08 and BILL-09 were paid" not in page(data("pending"))
 
 
 @needs_node
@@ -631,13 +669,15 @@ def test_decline_asks_before_acting() -> None:
 def test_needs_action_matches_open_cards() -> None:
     html = page(data("stopped"), "activities", filter="action")
     for title in [
-        "Payment of $800.00 to Flour Co stopped",
-        "Claude&#39;s summary said Flour Co was paid",
+        "Claude asks to pay Flour Co $800.00 for BILL-07",
+        "Payment of $200.00 for BILL-08 stopped",
+        "Payment of $150.00 for BILL-09 stopped",
+        "Claude&#39;s summary said BILL-08 and BILL-09 were paid",
     ]:
         assert title in html
     assert "Email to billing-help@outside.example stopped" not in html
     done = page(data("stopped"), "activities", filter="action", dismissed={"att_mismatch": True})
-    assert "Claude&#39;s summary said Flour Co was paid" not in done
+    assert "Claude&#39;s summary said BILL-08 and BILL-09 were paid" not in done
 
 
 @needs_node
@@ -729,11 +769,16 @@ def _js(expr: str) -> object:
 
 
 @needs_node
-def test_live_order_receipt_file_names_are_safe() -> None:
+def test_order_receipt_file_names_are_safe() -> None:
     assert _js('Portal.orderReceiptFile("live", "PO-2038")') == "receipt_live_PO-2038.json"
+    assert _js('Portal.orderReceiptFile("stopped", "PO-2038")') == "receipt_PO-2038_stopped.json"
     for num in ["../policies", "PO 2038", "", "a/b", "x" * 41]:
         assert _js(f"Portal.orderReceiptFile('live', {json.dumps(num)})") is None
-    assert _js('Portal.orderReceiptFile("stopped", "PO-2041")') is None
+        assert _js(f"Portal.orderReceiptFile('paid', {json.dumps(num)})") is None
+    assert _js('Portal.orderReceiptFile("../x", "PO-2041")') is None
+    for state in STATES:  # every demo order has its own file
+        for num in ["PO-2041", "PO-2038", "PO-2039"]:
+            assert (DATA / _js(f'Portal.orderReceiptFile("{state}", "{num}")')).is_file()
 
 
 @needs_node

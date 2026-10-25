@@ -1,7 +1,7 @@
 # Receipts demo storyboard
 
 Receipts makes an AI agent's work auditable. The pitch follows one bakery order, PO-2041 for $800.00.
-Run it in replay mode so the guard and the false-claim scenes happen every time. A live run is a bonus.
+Run it in replay mode so the guard and the false-claim scenes happen every time. Scene 3 is replay-only (see below). A live run is a bonus.
 
 **For:** small business owners who hand money tasks to an AI agent.
 **Three points to leave them with:**
@@ -15,8 +15,8 @@ Run it in replay mode so the guard and the false-claim scenes happen every time.
 | # | Time | Scene | On screen | What we say |
 | --- | --- | --- | --- | --- |
 | 1 | 0:00 | Who, problem, fix | Three slides: "Small bakery owners", "Can't trust an AI agent's work", "Receipts checks it for them" | Owners are handing money tasks to AI agents and can't tell if the agent did it right or got tricked. Receipts logs every action, blocks risky ones before they run, and checks the agent's story against the real records. |
-| 2 | 0:20 | Setting it up | Screen recording, sped up: install the plugin, answer a few questions (payment limit, tools, outside systems), Receipts is on | An owner installs the plugin and answers a few plain questions. From then on everything the agent does is logged and checked. |
-| 3 | 0:40 | Claude places the order | Claude orders 12 bags of all-purpose flour and 4 of bread flour from Flour Co. Receipt stages "order placed" and "order sent" turn green | The AI does the work. Every call is logged. |
+| 2 | 0:20 | Setting it up | Screen recording, sped up: three `claude plugin` commands, then the onboarding questions (which tools, the approval threshold, the monthly budget, approved suppliers with only the last 4 digits of their account) | An owner installs the plugin with three commands and answers a few plain questions. From then on everything the agent does is logged and checked. |
+| 3 | 0:40 | Claude places the order (replay only) | Claude orders 12 bags of all-purpose flour and 4 of bread flour from Flour Co. Receipt stages "order placed" and "order sent" turn green | The AI does the work. Every call is logged. |
 | 4 | 1:00 | The bill arrives | Two emails from Flour Co: bill BILL-07 for $800.00, and "our bank changed, pay the account ending 3210" | The bill comes in, and so does a request to pay a different account. |
 | 5 | 1:15 | The guard stops it | `pay_bill` for $800.00 to the account ending 3210 is blocked. The account on file ends 4471 | Code checked the account against the record before any money moved. |
 | 6 | 1:40 | Claude's summary | Claude says "Paid the Flour Co bill". The database shows 0 payments for BILL-07: false claim | The AI said it was done. The record says no. The AI never grades itself. |
@@ -30,8 +30,8 @@ Scenes 5 and 6 are the ones that must never fail.
 
 | Scene | Depends on |
 | --- | --- |
-| 2 | Onboarding skill with its hook trigger, plugin install (exact steps to confirm) |
-| 3 | BakeSupply server (PR #4), logging hook |
+| 2 | The README's "Install the plugin" section (merged in #10), the plugin skeleton (#7, merged), and the onboarding questions in #14. Merge order: #7, #15, #14 |
+| 3 | BakeSupply server (#4, merged), logging hook. Replay only: `bakery/seed.py` already seeds PO-2041 as placed |
 | 4 | Seeded inbox in `bakery/seed.py` |
 | 5 | Guard hook, `pay_bill` on the bakery server |
 | 6 | Claim extractor (fixture claims for replay), verifier |
@@ -41,8 +41,11 @@ Scenes 5 and 6 are the ones that must never fail.
 
 ## To settle
 
+- **Product name.** The pitch says "Receipts", the owner portal in #11 is branded "Ledger", and the marketplace is `the-ledgers`. Scene 9 ends on the project name, so pick one before the slides are made.
+- **Scene 3 in a live run.** PO-2041 is already seeded as placed, and BakeSupply returns `ord_1`. In a live run Claude would create a second order that the receipt never shows. The fix belongs to the `bakery/` owner, so scene 3 stays replay-only for now.
+- **Demo owner.** `demo/` and the slides have no owner. Once someone takes it, add a one-line row to the ownership table in `CLAUDE.md`. That table is shared, so it needs the team's okay.
 - **One story.** `docs/PLAN.md` still describes chasing three invoices plus a bill. This storyboard follows the order receipt in `docs/mock/order_receipt.json`.
-- **PO numbers.** BakeSupply returns `ord_1` while the bakery calls the order PO-2041. An optional PO number on the order call would tie them together on the receipt.
+- **PO numbers.** BakeSupply returns `ord_1` while the bakery calls the order PO-2041. An optional PO number on the order call would tie the two ids together on the receipt, but it doesn't fix the pre-seeded order above.
 - **Audience.** If the judges are investors or security people, rewrite scene 1 to name them.
 - **Say-it-back test.** Read scene 1 to someone outside the team. If they can't repeat what Receipts does, simplify.
 

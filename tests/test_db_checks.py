@@ -7,7 +7,7 @@ from contextlib import closing
 import pytest
 
 from bakery.seed import seed
-from checks.evaluate import PAY_CHECKS, evaluate
+from checks.gate import PAY_CHECKS, evaluate
 from checks.source import SqliteSource
 
 CLEAN = {"bill_id": "BILL-07", "amount_cents": 80000, "to_account": "000123454471"}
@@ -43,6 +43,8 @@ def test_clean_payment_passes_every_check(db):
 # (name, rows to change, argument overrides, the checks that must block) - plan section 5
 CASES = [
     ("changed_account", [], {"to_account": "9876543210"}, "C4"),
+    ("same_last_4", [], {"to_account": "999999994471"}, "C4"),
+    ("bill_asks_new_account", ["UPDATE bills SET pay_to_account = '000098763210'"], {}, "C4"),
     ("amount_drift", [], {"amount_cents": 90000}, "C5"),
     ("bill_not_order", ["UPDATE bills SET amount_cents = 88000"], {"amount_cents": 88000}, "C5"),
     ("orphan_bill", ["UPDATE bills SET order_id = NULL"], {}, "C6"),
@@ -61,7 +63,19 @@ CASES = [
         {},
         "C7",
     ),
+    (
+        "pending_payment",
+        ["INSERT INTO payments VALUES ('pay_1', 'BILL-07', 80000, '000123454471', 'pending', 'x')"],
+        {},
+        "C7",
+    ),
     ("bill_marked_paid", ["UPDATE bills SET status = 'paid'"], {}, "C7"),
+    (
+        "no_domains",
+        ["UPDATE bills SET from_addr = ''", "UPDATE vendors SET email = ''"],
+        {},
+        "C8",
+    ),
     (
         "spoofed_sender",
         ["UPDATE bills SET from_addr = 'billing@flourco-payments.example'"],
@@ -119,21 +133,38 @@ def test_crashing_check_blocks_under_its_id(db):
     assert blocked(run(db)) >= {"C4", "C8"}
 
 
-def test_source_is_read_only(db):
-    with SqliteSource(db) as source, pytest.raises(sqlite3.OperationalError, match="readonly"):
+@pytest.mark.parametrize("name", ["bakery.db", "bakery.db#frag", "bake?ry.db"])
+def test_source_is_read_only(tmp_path, name):
+    path = tmp_path / name
+    seed(path)
+    with SqliteSource(path) as source, pytest.raises(sqlite3.OperationalError, match="readonly"):
         source.conn.execute("DELETE FROM bills")
 
 
-def test_results_hold_no_full_account_number(db):
+def test_source_never_creates_a_database(tmp_path):
+    with pytest.raises(sqlite3.OperationalError):
+        SqliteSource(tmp_path / "absent.db#x")
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("to_account", ["9876543210", ["000123454471x"], {"n": "000123454471"}])
+def test_results_hold_no_full_account_number(db, to_account):
     with SqliteSource(db) as source:
-        results = evaluate("pay_bill", {**CLEAN, "to_account": "9876543210"}, source)
+        results = evaluate("pay_bill", {**CLEAN, "to_account": to_account}, source)
     text = repr([(r.title, r.inputs) for r in results])
     assert not re.search(r"\d{8,}", text)
-    assert "••3210" in text and "••4471" in text
+    assert "••4471" in text
+    assert {r.id for r in results if r.status == "block"} == {"C4"}
+
+
+def test_package_exports_evaluate():
+    import checks
+
+    assert checks.evaluate is evaluate
 
 
 def test_cli_exit_code(db):
-    cmd = [sys.executable, "-m", "checks.evaluate", "pay_bill", "--db", str(db)]
+    cmd = [sys.executable, "-m", "checks", "pay_bill", "--db", str(db)]
     clean = subprocess.run(
         [*cmd, '{"bill_id": "BILL-07", "amount_cents": 80000, "to_account": "000123454471"}'],
         check=False,

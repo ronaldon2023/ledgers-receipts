@@ -18,7 +18,9 @@ class Source(Protocol):
 
 class SqliteSource:
     def __init__(self, db_path: str | Path) -> None:
-        self.conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        # as_uri() percent-encodes "?" and "#", so the path can't drop or override mode=ro.
+        uri = Path(db_path).resolve().as_uri() + "?mode=ro"
+        self.conn = sqlite3.connect(uri, uri=True)
         self.conn.row_factory = sqlite3.Row
 
     def _one(self, sql: str, *args: object) -> dict | None:

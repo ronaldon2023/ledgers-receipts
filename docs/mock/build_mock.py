@@ -44,6 +44,12 @@ VERDICT = {
 }
 
 
+def entity_label(entity: str) -> str:
+    """US_BANK_NUMBER -> 'US bank number'."""
+    text = " ".join(w if w == "US" else w.lower() for w in entity.split("_"))
+    return text[:1].upper() + text[1:]
+
+
 def status_info(status: str) -> tuple[str, str, str]:
     return STATUS.get(status, ("unknown", "Unknown", "unrecognised status"))
 
@@ -124,7 +130,7 @@ def render(r: dict) -> str:
         or "<li><span>Nothing left the business</span></li>"
     )
     pii = "".join(
-        f"<li><span>{e(x['entity'].replace('_', ' ').title())}</span><b>{e(x['action'])}</b><small>{e(x['where'])}</small></li>"
+        f"<li><span>{e(entity_label(x['entity']))}</span><b>{e(x['action'])}</b><small>{e(x['where'])}</small></li>"
         for x in r["pii"]
     )
     chain = r["chain"]
@@ -235,8 +241,8 @@ TEMPLATE = """<title>Receipts Mock</title>
 <main class="wrap">
 <p class="mocknote">Design mock with sample data, for team feedback. Generated from docs/mock/receipt_issues.json.</p>
 <header>
-  <span class="eyebrow">AI work receipt &middot; {business}</span>
-  <h1>Monday money task</h1>
+  <span class="eyebrow">AI work receipt</span>
+  <h1>{business}</h1>
   <p class="task">{task}</p>
   <span class="stamp">Run {run} &middot; {when}</span>
 </header>

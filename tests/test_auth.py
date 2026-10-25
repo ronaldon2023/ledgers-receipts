@@ -23,6 +23,7 @@ def _isolated_stores(tmp_path, monkeypatch):
     and passkeys."""
     shared.accounts.path = tmp_path / "accounts.json"
     shared.auth.store.path = tmp_path / "credentials.json"
+    shared.api_keys.path = tmp_path / "api_keys.json"
 
     import auth.web as web_module
 
@@ -232,6 +233,74 @@ def test_login_rejects_a_foreign_passkey_with_an_undecodable_handle(client):
         "/api/login/complete", json={"login_id": begin["login_id"], "credential": credential}
     )
     assert response.status_code == 400
+
+
+def test_keys_page_renders(client):
+    assert client.get("/keys").status_code == 200
+
+
+def test_create_list_and_revoke_an_api_key(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+
+    created = client.post("/api/keys", json={"name": "BakeSupply MCP server"}, headers=headers)
+    assert created.status_code == 200
+    body = created.json()
+    assert body["key"].startswith("ledger_")
+    assert body["prefix"] == body["key"][:8]
+
+    keys = client.get("/api/keys", headers=headers).json()["keys"]
+    assert len(keys) == 1
+    assert keys[0]["name"] == "BakeSupply MCP server"
+    assert keys[0]["revoked"] is False
+    assert "key" not in keys[0]  # the raw key is never shown again
+
+    revoked = client.post(f"/api/keys/{keys[0]['key_id']}/revoke", headers=headers)
+    assert revoked.status_code == 200
+    keys = client.get("/api/keys", headers=headers).json()["keys"]
+    assert keys[0]["revoked"] is True
+
+
+def test_api_keys_require_a_session_and_are_isolated_per_account(client):
+    assert client.get("/api/keys").status_code == 401
+
+    alice = _signup(client, _authenticator(), display_name="Alice's Bakery")
+    bob = _signup(client, _authenticator(), display_name="Bob's Bakery")
+    client.post("/api/keys", json={}, headers={"authorization": f"Bearer {alice['session_token']}"})
+
+    bob_keys = client.get(
+        "/api/keys", headers={"authorization": f"Bearer {bob['session_token']}"}
+    ).json()["keys"]
+    assert bob_keys == []
+
+
+def test_revoking_an_unknown_or_already_revoked_key_fails_cleanly(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+
+    assert client.post("/api/keys/does-not-exist/revoke", headers=headers).status_code == 404
+
+    created = client.post("/api/keys", json={}, headers=headers).json()
+    client.post(f"/api/keys/{created['key_id']}/revoke", headers=headers)
+    twice = client.post(f"/api/keys/{created['key_id']}/revoke", headers=headers)
+    assert twice.status_code == 404
+
+
+def test_api_key_store_find_active_round_trips_and_ignores_revoked(tmp_path):
+    from auth.api_keys import ApiKeyStore
+
+    store = ApiKeyStore(path=tmp_path / "keys.json")
+    key, raw = store.create("acct-1", name="Test key")
+
+    found = store.find_active(raw)
+    assert found is not None
+    assert found.key_id == key.key_id
+    assert found.last_used_at is not None  # find_active records use
+
+    assert store.find_active("ledger_not-a-real-key") is None
+
+    store.revoke("acct-1", key.key_id)
+    assert store.find_active(raw) is None
 
 
 def test_credential_store_tolerates_records_from_an_older_schema(tmp_path):

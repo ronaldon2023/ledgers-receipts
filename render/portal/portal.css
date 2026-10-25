@@ -84,11 +84,14 @@ section { display: flex; flex-direction: column; gap: 14px; }
 .cardhead .l { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .metaRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
 .amount { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 8px; }
-.checks li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; background: var(--sunk); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
-.checks.plain { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-.checks.plain li { background: none; padding: 4px 0; }
-.checks li.flag { background: var(--flag-bg); }
+/* One check per row, split by thin lines; only a flagged check gets a tint. */
+.checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.checks li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 10px 12px; font-size: 14px; border-top: 1px solid var(--line); }
+.checks li:first-child { border-top: 0; }
+.checks.plain { gap: 2px; }
+.checks.plain li { padding: 4px 0; border-top: 0; }
+.checks li.flag { background: var(--flag-bg); border-radius: 8px; }
+.checks li.flag + li { border-top-color: transparent; }
 .ic-ok { color: var(--ok); font-weight: 700; } .ic-ask { color: var(--ask); font-weight: 700; } .ic-flag { color: var(--flag); font-weight: 700; }
 .ic-stop { color: var(--stop); font-weight: 700; } .ic-odd { color: var(--odd); font-weight: 700; } .ic-mute { color: var(--muted); font-weight: 700; }
 .quote { background: var(--sunk); border-radius: 8px; padding: 10px 14px; font-size: 14px; color: var(--fg2); }

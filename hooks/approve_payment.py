@@ -1,15 +1,16 @@
 """PreToolUse hook: make the owner approve any bakery payment over the approval threshold.
 
-Claude Code runs this before the bakery MCP tool pay_bill. Over the threshold (default
-$1,000, env RECEIPTS_APPROVAL_CENTS overrides it, in cents) it prints an "ask" decision, so
+Claude Code runs this before the bakery MCP tool pay_bill. When this payment plus
+what's already paid on the bill is over the threshold (default $1,000, env
+RECEIPTS_APPROVAL_CENTS overrides it, in cents), it prints an "ask" decision, so
 Claude Code shows the owner its permission prompt with the payment details as the reason.
 At or under the threshold it prints nothing, which leaves the decision to the normal rules.
 
 The details come from bakery.db, opened read-only: env BAKERY_DB, else
-$CLAUDE_PROJECT_DIR/bakery.db. If the bill can't be read, it still asks and says so. A bad
-call or an error in this hook also asks; it never silently allows. Account numbers are shown
-as their last 4 characters only, and so is any run of 5+ digits echoed from the call. A bill id
-is shown with anything outside [A-Za-z0-9._-] replaced by "?", so it can't forge prompt lines.
+$CLAUDE_PROJECT_DIR/bakery.db. If the bill can't be read, it still asks and says so; if earlier
+payments can't be read, it judges this payment alone. A bad call or an error in this hook
+also asks; it never silently allows. Account numbers are shown as their last 4 characters
+only, and so is any run of 5+ digits echoed from the call. A bill id is shown with anything outside [A-Za-z0-9._-] replaced by "?", so it can't forge prompt lines.
 Standard library only, so it runs on the system python3.
 Runnable by hand: echo '{"tool_input": {...}}' | python3 hooks/approve_payment.py
 """
@@ -93,7 +94,25 @@ def lookup_bill(bill_id: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def reason(tool_input: dict[str, Any], threshold: int | None) -> str:
+def paid_on_bill(bill_id: str) -> int:
+    """Cents already paid on the bill (payments not 'failed'), or 0 when the database can't be read."""
+    uri = Path(db_path()).resolve().as_uri() + "?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+        try:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(amount_cents), 0) FROM payments"
+                " WHERE bill_id = ? AND status != 'failed'",
+                (bill_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return 0
+    return row[0] if row and isinstance(row[0], int) else 0
+
+
+def reason(tool_input: dict[str, Any], threshold: int | None, paid: int = 0) -> str:
     """The plain-text reason the owner sees in the permission prompt."""
     amount = tool_input.get("amount_cents")
     bill_id = _show_bill_id(tool_input)
@@ -105,6 +124,9 @@ def reason(tool_input: dict[str, Any], threshold: int | None) -> str:
             lines.append("RECEIPTS_APPROVAL_CENTS isn't a number, so every payment needs approval.")
         else:
             lines.append(f"Payments over {dollars(threshold)} need the owner's approval.")
+        if paid:
+            total = dollars(paid + amount)
+            lines.append(f"Already paid on this bill: {dollars(paid)}. With this one: {total}.")
     else:
         amount = None
         lines.append(f"Receipts: malformed payment call on bill {bill_id}.")
@@ -146,9 +168,10 @@ def decide(event: Any) -> str | None:
     amount = tool_input.get("amount_cents")
     threshold = threshold_cents()
     is_int = isinstance(amount, int) and not isinstance(amount, bool)
-    if is_int and threshold is not None and amount <= threshold:
+    paid = paid_on_bill(str(tool_input["bill_id"])) if "bill_id" in tool_input else 0
+    if is_int and threshold is not None and amount + paid <= threshold:
         return None
-    return reason(tool_input, threshold)
+    return reason(tool_input, threshold, paid)
 
 
 def ask(text: str) -> str:

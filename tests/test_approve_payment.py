@@ -145,6 +145,31 @@ def test_bill_id_cannot_forge_prompt_lines(db: Path, junk: str) -> None:
     assert "(malformed bill id)" in text
 
 
+def add_payment(db: Path, cents: int, status: str) -> None:
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "INSERT INTO payments VALUES ('PAY-1', ?, ?, ?, ?, '2026-10-20T09:00:00')",
+            (BILL_ID, cents, ON_FILE, status),
+        )
+    conn.close()
+
+
+def test_split_payments_over_threshold_ask(db: Path) -> None:
+    assert run_hook(db, pay(50000)) == ""
+    add_payment(db, 60000, "sent")
+    text = asked(run_hook(db, pay(50000)))
+    assert "Already paid on this bill: $600.00. With this one: $1,100.00." in text
+
+
+def test_failed_payments_do_not_count(db: Path) -> None:
+    add_payment(db, 60000, "failed")
+    assert run_hook(db, pay(50000)) == ""
+
+
+def test_unreadable_payments_judge_this_payment_alone(tmp_path: Path) -> None:
+    assert run_hook(tmp_path / "absent.db", pay(50000)) == ""
+
+
 def test_hooks_json_registers_approval() -> None:
     config = json.loads((ROOT / "hooks" / "hooks.json").read_text())
     assert config["hooks"]["SessionStart"]

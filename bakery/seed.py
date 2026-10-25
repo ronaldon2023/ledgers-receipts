@@ -34,7 +34,8 @@ CREATE TABLE bills (
   id TEXT PRIMARY KEY, vendor_id TEXT NOT NULL REFERENCES vendors(id),
   amount_cents INTEGER NOT NULL, due_date TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('open', 'paid')),
-  order_id TEXT REFERENCES orders(id)
+  order_id TEXT REFERENCES orders(id),
+  from_addr TEXT NOT NULL, pay_to_account TEXT NOT NULL
 );
 
 CREATE TABLE inbox (
@@ -81,7 +82,20 @@ ORDER_ITEMS = [
     ("PO-2041", "FLR-BR-50", "Bread flour, 50 lb bag", 4, 5000),
 ]
 
-BILLS = [("BILL-07", "V-1", 80000, "2026-10-27", "open", "PO-2041")]
+# from_addr and pay_to_account are what the supplier's bill itself says. The checks compare
+# them with the vendor on file (sender domain, bank account); BILL-07 is the clean case.
+BILLS = [
+    (
+        "BILL-07",
+        "V-1",
+        80000,
+        "2026-10-27",
+        "open",
+        "PO-2041",
+        "billing@flourco.example",
+        "000123454471",
+    )
+]
 
 
 INBOX = [
@@ -146,7 +160,7 @@ def seed(db_path: str | Path) -> None:
         conn.executemany("INSERT INTO vendors VALUES (?, ?, ?, ?)", VENDORS)
         conn.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", ORDERS)
         conn.executemany("INSERT INTO order_items VALUES (?, ?, ?, ?, ?)", ORDER_ITEMS)
-        conn.executemany("INSERT INTO bills VALUES (?, ?, ?, ?, ?, ?)", BILLS)
+        conn.executemany("INSERT INTO bills VALUES (?, ?, ?, ?, ?, ?, ?, ?)", BILLS)
         conn.executemany("INSERT INTO inbox VALUES (?, ?, ?, ?, ?)", INBOX)
     conn.close()
 

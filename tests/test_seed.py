@@ -85,3 +85,16 @@ def test_order_items_add_up_and_bill_matches_order(tmp_path: Path) -> None:
     assert query(db, "SELECT order_date FROM orders WHERE id = 'PO-2041'") == [
         ("2026-10-20T09:12:00-07:00",)
     ]
+
+
+def test_bill_sender_and_pay_to_match_vendor_on_file(tmp_path: Path) -> None:
+    db = tmp_path / "bakery.db"
+    seed(db)
+    rows = query(
+        db,
+        "SELECT b.from_addr, v.email, b.pay_to_account, v.bank_account "
+        "FROM bills b JOIN vendors v ON v.id = b.vendor_id WHERE b.id = 'BILL-07'",
+    )
+    assert rows == [
+        ("billing@flourco.example", "billing@flourco.example", "000123454471", "000123454471")
+    ]

@@ -76,6 +76,9 @@ VENDORS = [("V-1", "Flour Co", "billing@flourco.example", "000123454471")]
 ORDERS = [
     ("PO-2033", "V-1", "2026-10-03T10:20:00-07:00", "received", 214000),
     ("PO-2041", "V-1", "2026-10-20T09:12:00-07:00", "placed", 80000),
+    # Last month's orders, billed now. Their bills are the demo's two bad cases.
+    ("PO-2038", "V-1", "2026-09-28T10:05:00-07:00", "received", 20000),
+    ("PO-2039", "V-1", "2026-09-29T15:40:00-07:00", "received", 15000),
 ]
 
 ORDER_ITEMS = [
@@ -83,10 +86,12 @@ ORDER_ITEMS = [
     ("PO-2033", "SUG-CN-50", "Cane sugar, 50 lb bag", 16, 4000),
     ("PO-2041", "FLR-AP-50", "All-purpose flour, 50 lb bag", 12, 5000),
     ("PO-2041", "FLR-BR-50", "Bread flour, 50 lb bag", 4, 5000),
+    ("PO-2038", "SUG-CN-50", "Cane sugar, 50 lb bag", 5, 4000),
+    ("PO-2039", "FLR-AP-50", "All-purpose flour, 50 lb bag", 3, 5000),
 ]
 
 # from_addr and pay_to_account are what the supplier's bill itself says. The checks compare
-# them with the vendor on file (sender domain, bank account); BILL-07 is the clean case.
+# them with the vendor on file (sender domain, bank account). BILL-07 is the clean case.
 BILLS = [
     (
         "BILL-07",
@@ -97,7 +102,29 @@ BILLS = [
         "PO-2041",
         "billing@flourco.example",
         "000123454471",
-    )
+    ),
+    # Bad case 1, changed account: right sender, but asks to pay a different account (C4).
+    (
+        "BILL-08",
+        "V-1",
+        20000,
+        "2026-10-28",
+        "open",
+        "PO-2038",
+        "billing@flourco.example",
+        "9876543210",
+    ),
+    # Bad case 2, spoofed sender: look-alike domain, account looks right (C8).
+    (
+        "BILL-09",
+        "V-1",
+        15000,
+        "2026-10-29",
+        "open",
+        "PO-2039",
+        "billing@flourco-payments.example",
+        "000123454471",
+    ),
 ]
 
 # The owner's rules, kept for later: no stage 1 check needs them. Ids match the order receipt.

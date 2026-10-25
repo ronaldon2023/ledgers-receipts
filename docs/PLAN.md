@@ -182,7 +182,7 @@ Money is always integer cents. Every write tool returns the id of the row it wro
  "prev": "<sha256>", "hash": "<sha256>"}
 ```
 
-Claude Code names MCP tools `mcp__<server>__<tool>`, so the bakery tools appear as `mcp__bakery__...`. A blocked call has `"tool": "GUARD_BLOCK"` and the reason in `response`.
+Claude Code names MCP tools `mcp__<server>__<tool>`, so the bakery tools appear as `mcp__bakery-local__...` and the supplier's as `mcp__bakesupply__...`; hooks must cover both. A blocked call has `"tool": "GUARD_BLOCK"` and the reason in `response`.
 
 **3. Claims (Person 2 produces, Ronaldo consumes)**
 
@@ -218,7 +218,7 @@ Stretch statuses (verify step 7, added only if time allows): `claim_mismatch`, `
 **Build:**
 
 1. `bakery/seed.py`: creates `bakery.db` from scratch with the seed data and both attack emails. Same ids every run (`INV-1043`, `out_1`, ...). `python -m bakery.seed` resets it.
-2. `bakery/server.py`: FastMCP server from the Python MCP SDK (`from mcp.server.fastmcp import FastMCP`), stdio transport, server name `bakery`. Six tools:
+2. `bakery/server.py`: MCP server from the Python MCP SDK v1 (`mcp<2`, `from mcp.server.fastmcp import FastMCP`), stdio transport (`--http` for streamable HTTP), server name `bakery-local`. Six tools:
 
 | Tool | Reads or writes | Returns |
 | --- | --- | --- |

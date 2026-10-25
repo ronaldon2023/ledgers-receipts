@@ -18,6 +18,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from bakery.seed import seed
+from checks.payment import PAYMENT_STAGE_STATUS as STAGE_FOR_PAYMENT
 from receipts.pii import mask_text
 
 MOCK = Path(__file__).resolve().parent.parent / "docs" / "mock"
@@ -66,14 +67,6 @@ def xref_problems(receipt: dict) -> list[str]:
         elif not 1 <= index <= entries[session]:
             problems.append(f"ref {ref} is past {session}'s {entries[session]} entries")
     return problems
-
-
-STAGE_FOR_PAYMENT = {
-    "sent": "done",
-    "blocked": "blocked",
-    "failed": "failed",
-    "not_started": "not_reached",
-}
 
 
 def ledger_problems(receipt: dict) -> list[str]:

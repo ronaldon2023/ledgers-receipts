@@ -12,6 +12,7 @@ test:
 
 reset:
 	$(PY) -m bakery.seed
+	$(PY) -m bakesupply.seed
 	rm -f logs/chain.jsonl
 
 replay:
@@ -22,4 +23,3 @@ demo:
 
 receipt:
 	$(PY) -m receipts.verify
-	$(PY) render/render.py receipt.json -o receipt.html

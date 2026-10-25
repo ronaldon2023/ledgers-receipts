@@ -9,9 +9,24 @@ Built by The Ledgers at the Claude Impact Lab Hackathon, Seattle, October 2026.
 
 ## What the owner sees
 
-Design mock with sample data (see `docs/mock/`). Feedback welcome.
+The owner portal (`render/portal/`), shown here with the demo data for Sweet Rose Bakery.
+Run it with `python -m render.portal`.
 
-![Receipt mock for Sweet Rose Bakery: an ISSUES FOUND verdict, a grid showing where each problem was caught, and the list of checks](docs/mock/receipt.png)
+**Onboarding.** The owner signs in, connects Claude Code and sets their payment rules.
+
+![Portal onboarding, step 1 of 4: sign in with a passkey, then connect Claude Code, set your rules, and finish](docs/screenshots/onboarding.png)
+
+**Dashboard.** Budget and balance at a glance, and anything waiting on the owner, such as a
+payment over their approval limit.
+
+![Portal dashboard: budget, balance and run tiles, an inventory check card, and an $800 Flour Co payment waiting for approval](docs/screenshots/dashboard.png)
+
+**Order receipt.** One page per order: where it stands, what was bought, and every check plain
+code ran, with the log lines behind each one.
+
+![Order receipt for PO-2041: ISSUES FOUND because an email asked to pay a different bank account, the payment was blocked, and Claude's summary claims a payment that doesn't exist](docs/screenshots/order-receipt.png)
+
+The original design mock is in `docs/mock/`.
 
 ## Install the plugin
 

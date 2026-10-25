@@ -57,7 +57,7 @@ Portal.LEVEL = {
   approve: ["Needs approval", "b-ask"], approved: ["You approved", "b-you"], declined: ["You declined", "b-mute"],
   resolved: ["Approved", "b-mute"], done: ["Done", "b-ok"], paid: ["Paid", "b-ok"], flag: ["Flag", "b-flag"],
   stop: ["Stopped", "b-stop"], mismatch: ["Doesn't match", "b-odd"], failed: ["Failed", "b-stop"],
-  untrusted: ["Untrusted", "b-stop"], info: ["Info", "b-mute"], _unknown: ["Unknown", "b-mute"]
+  untrusted: ["Untrusted", "b-stop"], info: ["Info", "b-mute"], task: ["To do", "b-you"], _unknown: ["Unknown", "b-mute"]
 };
 Portal.VERDICT = {
   VERIFIED: ["Verified", "b-ok"], ISSUES_FOUND: ["Issues found", "b-stop"], UNTRUSTED: ["Untrusted", "b-stop"],
@@ -118,8 +118,8 @@ Portal.passkey = function (card, text) {
 Portal.card = function (feed, c, ui) {
   var esc = Portal.esc, lv = Portal.status(Portal.LEVEL, c.level);
   var cls = { approve: "ask", stop: "stop", failed: "stop", mismatch: "odd" }[c.level] || "";
-  // Approval cards skip the status line: the passkey button says what's needed.
-  var head = (c.level === "approve" ? '' : '<div class="metaRow"><span class="b ' + lv[1] + '">' + esc(lv[0]) + '</span><span>' + esc(c.context) + ' · ' + esc(Portal.time(c.at)) + '</span></div>') +
+  // Approval and task cards skip the status line: their buttons say what's needed.
+  var head = (c.level === "approve" || c.level === "task" ? '' : '<div class="metaRow"><span class="b ' + lv[1] + '">' + esc(lv[0]) + '</span><span>' + esc(c.context) + ' · ' + esc(Portal.time(c.at)) + '</span></div>') +
     '<h3>' + esc(c.title) + '</h3>' + (c.subtitle ? '<p class="muted">' + esc(c.subtitle) + '</p>' : '');
   var h = '<article class="card ' + cls + '">' + (c.amount_cents != null
     ? '<div class="cardhead"><div class="l">' + head + '</div><span class="amount">' + esc(Portal.money(c.amount_cents)) + '</span></div>' : head);
@@ -132,10 +132,29 @@ Portal.card = function (feed, c, ui) {
     if (a.href) return '<a class="btn ghost linkbtn" href="' + esc(Portal.href(a.href)) + '">' + esc(a.label) + '</a>';
     return '<button type="button" class="btn' + (a.primary ? ' primary' : '') + '" data-card="' + esc(c.id) + '" data-action="' + i + '">' + esc(a.label) + '</button>';
   }).join("") + '</div>';
-  return h + Portal.stepsBlock(feed, c.steps) + '</article>';
+  return h + (Portal.pick(feed, c.steps).length ? Portal.stepsBlock(feed, c.steps) : '') + '</article>';
 };
 Portal.attention = function (feed, ui) {
   return (feed.attention || []).filter(function (c) { return !(ui.dismissed || {})[c.id]; });
+};
+/* The owner's clicks in this demo: an item with "requires" stays hidden until that card's action
+   has run, and an item that "resolves" with a card takes its when_approved or when_declined fields
+   once the owner has answered that card. */
+Portal.visible = function (feed, ui) {
+  var ran = ui.ran || {}, dis = ui.dismissed || {}, out = {};
+  var shown = function (x) { return !x.requires || ran[x.requires]; };
+  var answered = function (x) {
+    if (!x.resolves || !dis[x.resolves]) return x;
+    var y = {}, extra = ran[x.resolves] ? x.when_approved : x.when_declined, k;
+    for (k in x) y[k] = x[k];
+    for (k in extra || {}) y[k] = extra[k];
+    return y;
+  };
+  for (var k in feed) out[k] = feed[k];
+  ["steps", "events", "attention", "orders"].forEach(function (key) {
+    out[key] = (feed[key] || []).filter(shown).map(answered);
+  });
+  return out;
 };
 
 /* ---------- AI agent activities ---------- */
@@ -358,6 +377,7 @@ Portal.onboarding = function (d, ui) {
 
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
+  d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, policies: d.policies };
   var brand = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>';
   if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });
@@ -378,11 +398,11 @@ Portal.page = function (d, ui) {
 /* ---------- browser start-up: load the JSON, check it again every second, handle clicks ---------- */
 if (typeof document !== "undefined") (function () {
   var KEY = "receipts-portal-v3", STATES = ["pending", "stopped", "paid", "declined"];
-  var ui = { state: "pending", filter: "all", feedView: "order", confirming: null, dismissed: {}, onboarded: false, onboard: { step: 0 } };
+  var ui = { state: "pending", filter: "all", feedView: "order", confirming: null, dismissed: {}, ran: {}, onboarded: false, onboard: { step: 0 } };
   var data = null, last = "", side = document.getElementById("side"), app = document.getElementById("app");
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (saved && STATES.indexOf(saved.state) >= 0) { ui.state = saved.state; ui.dismissed = saved.dismissed || {}; }
+    if (saved && STATES.indexOf(saved.state) >= 0) { ui.state = saved.state; ui.dismissed = saved.dismissed || {}; ui.ran = saved.ran || {}; }
     if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; }
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
@@ -404,7 +424,7 @@ if (typeof document !== "undefined") (function () {
   function set(p) {
     for (var k in p) ui[k] = p[k];
     try {
-      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, onboarded: ui.onboarded, rules: ui.onboard.rules }));
+      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran, onboarded: ui.onboarded, rules: ui.onboard.rules }));
     } catch (e) { /* ignore */ }
     render();
   }
@@ -458,12 +478,13 @@ if (typeof document !== "undefined") (function () {
     if (t.hasAttribute("data-feedview")) return set({ feedView: t.getAttribute("data-feedview") });
     var card = (data.feed.attention || []).filter(function (c) { return c.id === t.getAttribute("data-card"); })[0];
     var act = t.getAttribute("data-act");
-    if (act === "reset") { ui.dismissed = {}; ui.filter = "all"; return go("pending"); }
+    if (act === "reset") { ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
     if (act === "cancel") return set({ confirming: null });
     if (!card) return;
     var i = act === "passkey" && ui.confirming ? ui.confirming.action : +t.getAttribute("data-action"), a = card.actions[i];
     if (a.confirm && act !== "passkey") return set({ confirming: { card: card.id, action: i } });
-    if (a.dismiss) { ui.dismissed[card.id] = true; set({ confirming: null }); }
+    if (a.run) ui.ran[card.id] = true; // e.g. Start check: reveals what that run produced
+    if (a.dismiss || a.run) { ui.dismissed[card.id] = true; set({ confirming: null }); }
     else if (a.next) go(a.next);
   });
   window.addEventListener("hashchange", function () { render(); window.scrollTo(0, 0); });

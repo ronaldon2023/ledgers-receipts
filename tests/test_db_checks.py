@@ -44,12 +44,18 @@ def test_clean_payment_passes_every_check(db):
 CASES = [
     ("changed_account", [], {"to_account": "9876543210"}, "C4"),
     ("same_last_4", [], {"to_account": "999999994471"}, "C4"),
-    (
-        "no_account_on_file",
-        ["UPDATE vendors SET bank_account = ''", "UPDATE bills SET pay_to_account = ''"],
-        {"to_account": ""},
-        "C4",
-    ),
+    *[
+        (
+            f"no_account_on_file_{i}",
+            [
+                f"UPDATE vendors SET bank_account = {blank}",
+                f"UPDATE bills SET pay_to_account = {blank}",
+            ],
+            {"to_account": value},
+            "C4",
+        )
+        for i, (blank, value) in enumerate([("''", ""), ("' '", " "), ("123456", 123456)])
+    ],
     ("bill_asks_new_account", ["UPDATE bills SET pay_to_account = '000098763210'"], {}, "C4"),
     ("amount_drift", [], {"amount_cents": 90000}, "C5"),
     ("bill_not_order", ["UPDATE bills SET amount_cents = 88000"], {"amount_cents": 88000}, "C5"),

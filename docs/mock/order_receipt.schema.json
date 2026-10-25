@@ -11,7 +11,6 @@
     "$schema": {"$ref": "#/$defs/text"},
     "receipt_type": {"const": "order-receipt/v0"},
     "receipt_id": {"$ref": "#/$defs/text"},
-    "supersedes": {"oneOf": [{"$ref": "#/$defs/text"}, {"type": "null"}], "description": "receipt_id of an earlier receipt for the same order"},
     "generated_at": {"$ref": "#/$defs/datetime"},
     "business": {"$ref": "#/$defs/party"},
     "verdict": {"enum": ["VERIFIED", "ISSUES_FOUND", "UNTRUSTED"]},
@@ -61,7 +60,6 @@
       "properties": {
         "bill_id": {"$ref": "#/$defs/text"},
         "vendor_id": {"$ref": "#/$defs/text"},
-        "vendor_invoice_number": {"$ref": "#/$defs/text", "description": "The supplier's own number, when it differs from bill_id"},
         "references_order": {"$ref": "#/$defs/text"},
         "received_at": {"$ref": "#/$defs/datetime"},
         "from": {"$ref": "#/$defs/text"},
@@ -85,43 +83,6 @@
       "if": {"properties": {"status": {"const": "sent"}}},
       "then": {"properties": {"payment_id": {"$ref": "#/$defs/text"}}},
       "else": {"properties": {"payment_id": {"type": "null"}}}
-    },
-    "authorization": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "requested_by": {"$ref": "#/$defs/actor"},
-        "approvals": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["step", "by", "method", "at", "evidence"],
-            "additionalProperties": false,
-            "properties": {
-              "step": {"$ref": "#/$defs/stage"},
-              "by": {"$ref": "#/$defs/actor"},
-              "method": {"enum": ["passkey"], "description": "Whiteboard plan; no component records approvals yet"},
-              "at": {"$ref": "#/$defs/datetime"},
-              "evidence": {"$ref": "#/$defs/refs"}
-            }
-          }
-        }
-      }
-    },
-    "policies": {
-      "type": "array",
-      "description": "Definitions only. Results live in checks.",
-      "items": {
-        "type": "object",
-        "required": ["id", "kind", "title"],
-        "additionalProperties": false,
-        "properties": {
-          "id": {"$ref": "#/$defs/text"},
-          "kind": {"enum": ["order", "payment", "budget"]},
-          "title": {"$ref": "#/$defs/text"},
-          "limit_cents": {"$ref": "#/$defs/cents"}
-        }
-      }
     },
     "lifecycle": {
       "type": "array",
@@ -173,22 +134,7 @@
             "enum": ["policy", "guard", "records", "summary"]
           },
           "guard": {"enum": ["email_spoofing", "policy", "security"]},
-          "policy_id": {"$ref": "#/$defs/text"},
           "title": {"$ref": "#/$defs/text"},
-          "measured": {
-            "type": "object",
-            "description": "Figures a budget check compared; projected means the payment has not happened",
-            "required": ["as_of", "projected"],
-            "additionalProperties": false,
-            "properties": {
-              "as_of": {"$ref": "#/$defs/datetime"},
-              "projected": {"type": "boolean"},
-              "limit_cents": {"$ref": "#/$defs/cents"},
-              "used_cents": {"$ref": "#/$defs/cents"},
-              "balance_cents": {"$ref": "#/$defs/cents"},
-              "after_cents": {"$ref": "#/$defs/cents"}
-            }
-          },
           "evidence": {"$ref": "#/$defs/refs"},
           "caused_by": {
             "type": "object",
@@ -328,9 +274,10 @@
       }
     },
     {
-      "description": "An error message only accompanies a summary check that errored",
+      "description": "An error message accompanies a summary check that errored, and only that",
       "if": {"properties": {"summary_check": {"properties": {"status": {"enum": ["checked", "not_checked"]}}}}},
-      "then": {"properties": {"summary_check": {"not": {"required": ["error"]}}}}
+      "then": {"properties": {"summary_check": {"not": {"required": ["error"]}}}},
+      "else": {"properties": {"summary_check": {"required": ["error"]}}}
     }
   ],
   "$defs": {
@@ -358,12 +305,6 @@
       "required": ["id", "name"],
       "additionalProperties": false,
       "properties": {"id": {"$ref": "#/$defs/text"}, "name": {"$ref": "#/$defs/text"}, "email": {"$ref": "#/$defs/text"}}
-    },
-    "actor": {
-      "type": "object",
-      "required": ["kind", "name"],
-      "additionalProperties": false,
-      "properties": {"kind": {"enum": ["agent", "human"]}, "name": {"$ref": "#/$defs/text"}, "session": {"$ref": "#/$defs/text"}}
     }
   }
 }

@@ -32,8 +32,6 @@ def xref_problems(receipt: dict) -> list[str]:
     problems = []
     ids = [c["id"] for c in receipt["checks"]]
     problems += [f"duplicate check {i}" for i in sorted(set(ids)) if ids.count(i) > 1]
-    if receipt.get("supersedes") == receipt["receipt_id"]:
-        problems.append("receipt supersedes itself")
     checks = {c["id"]: c for c in receipt["checks"]}
     on_stage = {}
     for row in receipt["lifecycle"]:
@@ -48,9 +46,6 @@ def xref_problems(receipt: dict) -> list[str]:
             )
     refs = [r for c in checks.values() for r in c["evidence"]]
     refs += [c["caused_by"]["ref"] for c in checks.values() if "caused_by" in c]
-    refs += [
-        r for a in receipt.get("authorization", {}).get("approvals", []) for r in a["evidence"]
-    ]
     refs += [p["where"] for p in receipt["pii"]]
     problems += [f"ref {r} has no evidence entry" for r in refs if r not in receipt["evidence"]]
     sessions = [s["session"] for s in receipt["sessions"]]
@@ -67,13 +62,6 @@ def xref_problems(receipt: dict) -> list[str]:
             problems.append(f"ref {ref} names an unknown session")
         elif not 1 <= index <= entries[session]:
             problems.append(f"ref {ref} is past {session}'s {entries[session]} entries")
-    requested = receipt.get("authorization", {}).get("requested_by", {}).get("session")
-    if requested and requested not in entries:
-        problems.append(f"requested_by names unknown session {requested}")
-    policies = {p["id"] for p in receipt.get("policies", [])}
-    for check in checks.values():
-        if "policy_id" in check and check["policy_id"] not in policies:
-            problems.append(f"{check['id']} names unknown policy {check['policy_id']}")
     return problems
 
 
@@ -103,10 +91,6 @@ XREF_BREAKS = {
     "ref s2:log:6 has no evidence entry": _dangling_ref,
     "duplicate check chk_1": _duplicate_check,
     "ref s2:log:9 is past s2's 6 entries": _ref_past_entries,
-    "requested_by names unknown session s7": lambda r: _set(
-        "authorization.requested_by.session", "s7"
-    )(r),
-    "receipt supersedes itself": lambda r: _set("supersedes", r["receipt_id"])(r),
     "duplicate session s1": lambda r: r["sessions"].append(copy.deepcopy(r["sessions"][0])),
     "duplicate stage payment_sent": lambda r: r["lifecycle"].append(
         copy.deepcopy(r["lifecycle"][-1])
@@ -130,19 +114,12 @@ def test_money_adds_up() -> None:
     assert (
         SAMPLE["bill"]["amount_cents"] == order["total_cents"] == SAMPLE["payment"]["amount_cents"]
     )
-    for check in SAMPLE["checks"]:
-        m = check.get("measured", {})
-        if "used_cents" in m:
-            assert m["used_cents"] + order["total_cents"] == m["after_cents"]
-        if "balance_cents" in m:
-            assert m["balance_cents"] - order["total_cents"] == m["after_cents"]
 
 
 def test_timestamps_parse() -> None:
     # The schema's date-time format is only enforced when a format checker is installed.
     stamps = [SAMPLE["generated_at"], SAMPLE["order"]["order_date"], SAMPLE["bill"]["received_at"]]
     stamps += [row["at"] for row in SAMPLE["lifecycle"] if row["at"]]
-    stamps += [a["at"] for a in SAMPLE["authorization"]["approvals"]]
     for stamp in stamps:
         assert datetime.fromisoformat(stamp).tzinfo is not None, stamp
     date.fromisoformat(SAMPLE["bill"]["due_date"])
@@ -267,14 +244,14 @@ CONTRADICTIONS = {
     "check_without_evidence": _set("checks.0.evidence", []),
     "logged_stage_without_checks": _set("lifecycle.0.checks", []),
     "logged_stage_without_time": _set("lifecycle.0.at", None),
-    "approval_without_evidence": _set("authorization.approvals.0.evidence", []),
+    "account_in_pii_entity": _set("pii.0.entity", "9876543210"),
     "short_chain_head": _set("sessions.0.head", "f1204705a75493c8"),
     "unmasked_account": _set("payment.account_on_file", "000123454471"),
     "unknown_ref_shape": _set("checks.0.evidence", ["log:9"]),
     "payment_not_started_but_stage_blocked": _set("payment.status", "not_started"),
     "payment_failed_but_stage_blocked": _set("payment.status", "failed"),
     "error_text_on_checked_summary": _set("summary_check.error", "extractor timed out"),
-    "account_in_vendor_invoice_number": _set("bill.vendor_invoice_number", "9876543210"),
+    "unknown_field_on_bill": _set("bill.vendor_invoice_number", "FC-7781"),
 }
 
 # Each case breaks one VERIFIED condition on an otherwise clean order, so every clause is pinned.
@@ -324,3 +301,5 @@ def test_failed_extractor_gives_issues_found() -> None:
     assert schema_errors(receipt), "VERIFIED with an unchecked summary validated"
     receipt["verdict"] = "ISSUES_FOUND"
     assert schema_errors(receipt) == []
+    del receipt["summary_check"]["error"]
+    assert schema_errors(receipt), "an errored summary check without a message validated"

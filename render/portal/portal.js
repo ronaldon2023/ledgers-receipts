@@ -356,7 +356,7 @@ Portal.onboarding = function (d, ui) {
     var num = function (id, label, cents) {
       return '<label class="field"><span><b>' + esc(label) + '</b></span><span class="dollar">$<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + esc(Math.round(cents / 100)) + '"></span></label>';
     };
-    h += '<h2>Your rules</h2><p>Plain code checks these before every action Claude takes. Claude can\'t change them.</p>' +
+    h += '<h2>Your rules</h2><p>These are the policies Ledger checks on every run your AI agents make.</p>' +
       '<h3>Order</h3><label class="field"><span><b>Approved suppliers</b></span><input id="r-suppliers" type="text" value="' + esc(r.suppliers) + '"></label>' +
       '<h3>Payment</h3>' + num("r-threshold", "Ask me before paying more than", r.threshold_cents) +
       '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.budget_cents) +

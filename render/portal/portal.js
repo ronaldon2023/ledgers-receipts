@@ -209,7 +209,8 @@ Portal.feedHtml = function (feed, ui) {
 /* ---------- pages ---------- */
 Portal.header = function (title, sub) {
   return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1>' + (sub ? '<p>' + Portal.esc(sub) + '</p>' : '') + '</div>' +
-    '<button type="button" class="btn" data-act="reset">Restart demo</button></header>';
+    '<div class="actions"><button type="button" class="btn" data-onb="again">Start onboarding</button>' +
+    '<button type="button" class="btn" data-act="reset">Restart demo</button></div></header>';
 };
 Portal.dashboard = function (d, ui) {
   var esc = Portal.esc, f = d.feed, g = f.glance, cards = Portal.attention(f, ui);

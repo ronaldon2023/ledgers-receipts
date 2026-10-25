@@ -318,3 +318,12 @@ def test_by_order_is_first_and_default_and_time_moved_to_sidebar() -> None:
     assert "Claude is working on your bills" not in dash
     meta = out["side"][out["side"].index('class="meta"') :]
     assert meta.index("Sun 25 Oct · 2:02 PM") < meta.index("Agent: Claude")
+
+
+@needs_node
+def test_every_page_has_a_start_onboarding_button() -> None:
+    for view in ["dashboard", "activities", "policies", "order/PO-2041"]:
+        assert (
+            '<button type="button" class="btn" data-onb="again">Start onboarding</button>'
+            in page(data("stopped"), view)
+        )

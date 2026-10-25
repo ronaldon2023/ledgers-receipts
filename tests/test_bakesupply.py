@@ -1,4 +1,7 @@
+import os
 import sqlite3
+import subprocess
+import sys
 from contextlib import closing
 from datetime import date, timedelta
 from pathlib import Path
@@ -7,7 +10,7 @@ import pytest
 
 from bakery.seed import VENDORS
 from bakesupply import server
-from bakesupply.seed import SUPPLIER, SUPPLIER_EMAIL, seed
+from bakesupply.seed import SCHEMA_VERSION, SUPPLIER, SUPPLIER_EMAIL, seed
 from bakesupply.server import (
     MAX_QUANTITY,
     get_invoice,
@@ -181,3 +184,40 @@ def test_invoice_for_an_order_in_an_older_database(db: Path) -> None:
 def test_invoice_says_where_to_pay_and_it_matches_the_bakerys_vendor(db: Path) -> None:
     place_order("FLR-AP-50", 1, db)
     assert get_invoice("ord_1", db)["pay_to_account"] == VENDORS[0][3]
+
+
+def set_version(db: Path, version: int) -> None:
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(f"PRAGMA user_version = {version}")
+
+
+def test_a_fresh_database_is_stamped_and_passes_the_check(db: Path) -> None:
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    server.check_schema(db)
+
+
+@pytest.mark.parametrize("version", [0, SCHEMA_VERSION + 1])
+def test_an_out_of_date_database_fails_the_check_with_the_fix(db: Path, version: int) -> None:
+    set_version(db, version)
+    with pytest.raises(RuntimeError, match="out of date.*make reset"):
+        server.check_schema(db)
+
+
+def test_a_missing_database_fails_the_check(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="doesn't exist.*make reset"):
+        server.check_schema(tmp_path / "nope.db")
+
+
+def test_the_server_refuses_to_start_on_an_old_database(db: Path) -> None:
+    set_version(db, 0)
+    run = subprocess.run(
+        [sys.executable, "-m", "bakesupply.server"],
+        env={**os.environ, "BAKESUPPLY_DB": str(db)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert run.returncode != 0
+    assert "out of date" in run.stderr and "make reset" in run.stderr

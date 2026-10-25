@@ -6,6 +6,7 @@ Tools never raise: a refused call returns {"ok": false, "error": "..."}.
 
 import re
 import sqlite3
+import sys
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from datetime import date, timedelta
@@ -15,7 +16,13 @@ from typing import Annotated, Any
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from bakesupply.seed import DB_PATH, SUPPLIER, SUPPLIER_BANK_ACCOUNT, SUPPLIER_EMAIL
+from bakesupply.seed import (
+    DB_PATH,
+    SCHEMA_VERSION,
+    SUPPLIER,
+    SUPPLIER_BANK_ACCOUNT,
+    SUPPLIER_EMAIL,
+)
 
 MAX_QUANTITY = 10_000
 PAYMENT_TERMS_DAYS = 14
@@ -193,5 +200,27 @@ def _list_orders() -> list[dict[str, Any]]:
     return list_orders()
 
 
-if __name__ == "__main__":
+def check_schema(db_path: Path | None = None) -> None:
+    """Fail clearly, at startup, if bakesupply.db is missing or was made by another version."""
+    path = db_path or DB_PATH
+    fix = "Run make reset (or: python -m bakesupply.seed)."
+    if not path.exists():
+        raise RuntimeError(f"{path.name} doesn't exist. {fix}")
+    with closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
+        found = conn.execute("PRAGMA user_version").fetchone()[0]
+    if found != SCHEMA_VERSION:
+        raise RuntimeError(
+            f"{path.name} is out of date (schema {found}, this code needs {SCHEMA_VERSION}). {fix}"
+        )
+
+
+def main() -> None:
+    try:
+        check_schema()
+    except RuntimeError as exc:
+        sys.exit(f"bakesupply: {exc}")
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

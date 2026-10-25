@@ -33,6 +33,9 @@ CREATE TABLE orders (
 );
 """
 
+# Bump when SCHEMA changes. The server refuses to start on a database with another number.
+SCHEMA_VERSION = 1
+
 SUPPLIER = "Flour Co"
 SUPPLIER_EMAIL = "billing@flourco.example"
 # The account Flour Co is paid at. Must match the vendor row in bakery/seed.py (a test checks).
@@ -51,6 +54,7 @@ def seed(db_path: Path = DB_PATH) -> None:
     db_path.unlink(missing_ok=True)
     with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.executescript(SCHEMA)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.executemany(
             "INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)",
             [(*row, SUPPLIER, SUPPLIER_EMAIL) for row in CATALOG],

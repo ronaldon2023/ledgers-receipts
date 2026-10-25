@@ -1,16 +1,17 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from bakery.seed import seed
 
 
 def dump(path: Path) -> list[str]:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         return list(conn.iterdump())
 
 
 def query(path: Path, sql: str) -> list[tuple]:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         return conn.execute(sql).fetchall()
 
 
@@ -24,7 +25,7 @@ def test_seed_is_deterministic(tmp_path: Path) -> None:
 def test_reseed_resets_changes(tmp_path: Path) -> None:
     db = tmp_path / "bakery.db"
     seed(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:  # close before re-seeding (Windows)
         conn.execute("INSERT INTO outbox VALUES ('out_1', 'draft', 'x@y.example', 's', 'b', 't')")
     seed(db)
     assert query(db, "SELECT COUNT(*) FROM outbox") == [(0,)]

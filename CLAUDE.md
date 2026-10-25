@@ -18,6 +18,7 @@ someone else's half-finished code.
 | `claims/` | Person 2 | Claim extractor (the only LLM step) |
 | `render/` | Lana (UX) | Receipt HTML page |
 | `receipts/` | Ronaldo | Guard, log masking, hash chain, verifier |
+| `checks/` | Anthony | Checks library: the rules run against a receipt |
 | `contracts/` | Everyone | The 4 shared JSON shapes. Changes need team agreement |
 
 ## How to work

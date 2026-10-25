@@ -349,8 +349,10 @@ Portal.onboarding = function (d, ui) {
   var esc = Portal.esc, o = ui.onboard || {}, step = o.step || 0, r = o.rules || Portal.ruleDefaults(d.policies);
   var back = '<button type="button" class="btn ghost" data-onb="back">Back</button>';
   var h = '<header class="top"><div><h1>Set up Ledger</h1><p>' + esc(d.feed.business) + ' · step ' + (step + 1) + ' of 4</p></div></header>' +
-    '<ol class="stages" aria-label="Setup steps">' + Portal.ONBOARD_STEPS.map(function (s, i) {
-      return '<li' + (i === step ? ' class="on" aria-current="step"' : '') + '><b>' + esc(s) + '</b><span class="tag ' + (i < step ? 'ic-ok">Done' : i === step ? 'ic-ask">Now' : 'ic-mute">Next') + '</span></li>';
+    '<ol class="stepper" aria-label="Setup steps">' + Portal.ONBOARD_STEPS.map(function (s, i) {
+      var state = i < step ? "done" : i === step ? "on" : "todo";
+      return '<li class="' + state + '"' + (i === step ? ' aria-current="step"' : '') + '><span class="num" aria-hidden="true">' +
+        (i < step ? '✓' : i + 1) + '</span><span class="lbl">' + esc(s) + (i < step ? '<span class="sr"> (done)</span>' : '') + '</span></li>';
     }).join("") + '</ol><section class="card onb">';
   if (step === 0) {
     h += '<h2>Welcome, ' + esc(d.feed.owner) + '</h2><p>Ledger shows you everything Claude does for your business. Claude does the work, plain code checks every step, and nothing over your limits happens without you.</p>' +
@@ -379,11 +381,11 @@ Portal.onboarding = function (d, ui) {
       '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file</b></span></li></ul>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="rules">Save rules</button>' + back + '</div>';
   } else {
-    h += '<h2>You\'re set</h2><div class="two">' +
-      '<div class="quote"><b>Claude does the work</b>Orders supplies, pays bills and answers email, using the order and payment skills.</div>' +
-      '<div class="quote"><b>Code checks every step</b>Approved suppliers: ' + esc(r.suppliers || "none yet") + '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ' + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</div>' +
-      '<div class="quote"><b>You approve</b>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</div>' +
-      '<div class="quote"><b>Alerts</b>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</div></div>' +
+    h += '<h2>You\'re set</h2><ul class="summary">' +
+      '<li><b>Claude does the work</b><span>Orders supplies, pays bills and answers email, using the order and payment skills.</span></li>' +
+      '<li><b>Code checks every step</b><span>Approved suppliers: ' + esc(r.suppliers || "none yet") + '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ' + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</span></li>' +
+      '<li><b>You approve</b><span>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</span></li>' +
+      '<li><b>Alerts</b><span>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</span></li></ul>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="finish">Go to dashboard</button>' + back + '</div>';
   }
   return h + '</section>';

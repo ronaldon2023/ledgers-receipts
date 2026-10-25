@@ -217,7 +217,19 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .side[hidden] + main { max-width: 1000px; margin-inline: auto; }
 .onb h2 { margin: 0; font-size: 21px; }
 .onb h3 { margin: 6px 0 0; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
-.stages li.on { box-shadow: inset 0 0 0 2px var(--brown); }
+.stepper { list-style: none; margin: 0; padding: 20px 24px; display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.stepper li { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; color: var(--muted); font-size: 15px; }
+.stepper li + li { flex: 1 1 auto; }
+.stepper li + li::before { content: ""; flex: 1 1 auto; min-width: 16px; height: 1px; background: var(--line-strong); margin-right: 2px; }
+.stepper .num { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #B9AA9C; color: #FFFFFF; font-size: 13px; font-weight: 600; }
+.stepper li.on, .stepper li.done { color: var(--fg); }
+.stepper li.on .num, .stepper li.done .num { background: var(--brown); }
+.stepper li.on .lbl { font-weight: 600; }
+.summary { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.summary li { display: flex; flex-direction: column; gap: 2px; padding: 12px 0; border-top: 1px solid var(--line); }
+.summary li:first-child { border-top: 0; padding-top: 0; }
+.summary span { color: var(--fg2); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .howto { margin: 0; padding-left: 22px; }
 .howto li { margin-bottom: 14px; padding-left: 4px; }
 .howto li::marker { font-weight: 600; color: var(--brown); }
@@ -236,6 +248,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .side { position: static; height: auto; max-width: none; flex-basis: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; padding-block: 12px; padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .brand { padding: 0 10px 0 0; flex-basis: 100%; }
   .side .meta { display: none; }
+  .stepper { padding: 16px; gap: 8px; }
+  .stepper li:not(.on) .lbl { display: none; }
   .side .navbtns { margin-top: 8px; flex-basis: 100%; flex-direction: row; flex-wrap: wrap; }
   .side .navbtns .btn { width: auto; flex: 1 1 auto; }
   .item > summary { grid-template-columns: 64px minmax(0, 1fr); }

@@ -472,3 +472,25 @@ def test_finished_check_dissolves_and_order_card_appears() -> None:
     assert '<article class="card  leaving">' in leaving
     entering = page(data("pending"), entering={"att_order": True}, **CHECKED)
     assert '<article class="card ask entering">' in entering
+
+
+@needs_node
+def test_onboarding_uses_a_stepper() -> None:
+    html = onboarding(1)["main"]
+    stepper = html[html.index('<ol class="stepper"') : html.index("</ol>")]
+    assert stepper.count("<li ") == 4
+    assert '<li class="done"><span class="num" aria-hidden="true">✓</span>' in stepper
+    assert (
+        '<li class="on" aria-current="step"><span class="num" aria-hidden="true">2</span>'
+        in stepper
+    )
+    assert stepper.count('<li class="todo">') == 2
+    assert 'class="stages"' not in html
+
+
+@needs_node
+def test_youre_set_lists_items_vertically() -> None:
+    html = onboarding(3)["main"]
+    assert html.count('<ul class="summary"><li><b>Claude does the work</b>') == 1
+    assert html.count("<li><b>") == 4
+    assert 'class="quote"' not in html

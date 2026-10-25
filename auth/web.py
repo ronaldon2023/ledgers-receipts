@@ -81,6 +81,10 @@ def build_auth_app() -> FastAPI:
     def security_page() -> str:
         return _SECURITY_HTML
 
+    @app.get("/keys", response_class=HTMLResponse)
+    def keys_page() -> str:
+        return _KEYS_HTML
+
     @app.post("/api/signup/begin")
     def signup_begin(body: _SignupBeginRequest) -> dict:
         account_id = f"acct-{uuid.uuid4().hex[:12]}"
@@ -220,6 +224,40 @@ def build_auth_app() -> FastAPI:
             raise HTTPException(404, "unknown passkey")
         return {"ok": True}
 
+    @app.get("/api/keys")
+    def list_keys(authorization: str | None = Header(default=None)) -> dict:
+        account = _account_from_session(authorization)
+        keys = shared.api_keys.for_account(account.account_id)
+        return {
+            "keys": [
+                {
+                    "key_id": k.key_id,
+                    "name": k.name,
+                    "prefix": k.prefix,
+                    "created_at": k.created_at,
+                    "last_used_at": k.last_used_at,
+                    "revoked": k.revoked,
+                }
+                for k in keys
+            ]
+        }
+
+    @app.post("/api/keys")
+    def create_key(
+        body: _CreateKeyRequest, authorization: str | None = Header(default=None)
+    ) -> dict:
+        account = _account_from_session(authorization)
+        key, raw_key = shared.api_keys.create(account.account_id, name=body.name)
+        return {"key_id": key.key_id, "name": key.name, "prefix": key.prefix, "key": raw_key}
+
+    @app.post("/api/keys/{key_id}/revoke")
+    def revoke_key(key_id: str, authorization: str | None = Header(default=None)) -> dict:
+        account = _account_from_session(authorization)
+        ok = shared.api_keys.revoke(account.account_id, key_id)
+        if not ok:
+            raise HTTPException(404, "unknown or already-revoked key")
+        return {"ok": True}
+
     return app
 
 
@@ -247,6 +285,10 @@ class _AddPasskeyCompleteRequest(BaseModel):
 
 class _RenamePasskeyRequest(BaseModel):
     name: str
+
+
+class _CreateKeyRequest(BaseModel):
+    name: str | None = None
 
 
 _STYLE = """
@@ -315,6 +357,12 @@ a{color:var(--ink)}
   border:none;border-radius:999px;cursor:pointer}
 .revokebtn:hover{opacity:.85}
 .revokebtn:disabled,.linkbtn:disabled{opacity:.4;cursor:default}
+.tabs{display:flex;gap:16px;border-bottom:1px solid var(--rule);margin:-6px 0 4px}
+.tabs a{font:600 13px var(--sans);color:var(--muted);text-decoration:none;padding-bottom:10px;
+  border-bottom:2px solid transparent}
+.tabs a.on{color:var(--ink);border-bottom-color:var(--ink)}
+.keybox{font:13px var(--mono);background:var(--panel);border:1px solid var(--rule);
+  border-radius:10px;padding:12px 14px;word-break:break-all;user-select:all}
 """
 
 
@@ -414,6 +462,7 @@ _LOGIN_HTML = _page("Sign in", _LOGIN_BODY, _LOGIN_SCRIPT)
 
 
 _SECURITY_BODY = """
+<nav class="tabs"><a href="/security" class="on">Passkeys</a><a href="/keys">API keys</a></nav>
 <h1>Your passkeys</h1>
 <p class="lede">Anyone with one of these can sign in as you. Remove any you don't recognize.</p>
 <div class="banner bad" id="error"></div>
@@ -523,6 +572,99 @@ document.getElementById('signout-link').onclick = (e) => {
 """
 
 _SECURITY_HTML = _page("Your passkeys", _SECURITY_BODY, _SECURITY_SCRIPT)
+
+
+_KEYS_BODY = """
+<nav class="tabs"><a href="/security">Passkeys</a><a href="/keys" class="on">API keys</a></nav>
+<h1>API keys</h1>
+<p class="lede">For a non-browser caller -- an MCP server, a script -- that can't sign in with
+a passkey. Each key is shown once, at creation; store it somewhere safe.</p>
+<div class="banner bad" id="error"></div>
+<div class="banner ok" id="newkey"></div>
+<ul class="list" id="keys"><li class="hint">Loading…</li></ul>
+<div>
+  <label for="new-key-name">Name this key (optional)</label>
+  <input type="text" id="new-key-name" placeholder="e.g. &quot;BakeSupply MCP server&quot;">
+</div>
+<button class="btn" id="create"><span class="spin"></span><span class="label">Create a key</span></button>
+<p class="hint center"><a href="#" id="signout-link">Sign out</a></p>
+"""
+
+_KEYS_SCRIPT = """
+const error = document.getElementById('error');
+const newkey = document.getElementById('newkey');
+const session = sessionStorage.getItem('ledger_session');
+if (!session) { window.location.href = '/login'; }
+const authed = {headers: {authorization: 'Bearer ' + session}};
+
+function fmt(ts) { return ts ? new Date(ts).toLocaleString() : 'never'; }
+
+function row(k) {
+  const status = k.revoked ? '<span class="desc">Revoked</span>'
+    : `<button class="revokebtn" data-revoke="${k.key_id}">Revoke</button>`;
+  return `<li class="item"><div><div class="name">${k.name}</div>
+    <div class="desc">${k.prefix}••••••••• · created ${fmt(k.created_at)} · last used ${fmt(k.last_used_at)}</div></div>
+    <div class="btns">${status}</div></li>`;
+}
+
+async function load() {
+  const res = await fetch('/api/keys', authed);
+  if (!res.ok) { sessionStorage.removeItem('ledger_session'); window.location.href = '/login'; return; }
+  const data = await res.json();
+  const list = document.getElementById('keys');
+  list.innerHTML = data.keys.length ? data.keys.map(row).join('')
+    : '<li class="hint">No API keys yet -- create one below.</li>';
+  list.querySelectorAll('[data-revoke]').forEach(btn => btn.onclick = async () => {
+    btn.disabled = true;
+    const res = await fetch(`/api/keys/${btn.dataset.revoke}/revoke`, {method: 'POST', ...authed});
+    if (!res.ok) {
+      error.textContent = (await res.json()).detail;
+      error.classList.add('show');
+      btn.disabled = false;
+      return;
+    }
+    load();
+  });
+}
+load().catch(err => {
+  error.textContent = "Couldn't load API keys: " + (err.message || err);
+  error.classList.add('show');
+});
+
+document.getElementById('create').onclick = async () => {
+  const btn = document.getElementById('create');
+  error.classList.remove('show');
+  newkey.classList.remove('show');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  try {
+    const name = document.getElementById('new-key-name').value.trim() || null;
+    const created = await fetch('/api/keys', {method: 'POST',
+      headers: {...authed.headers, 'content-type': 'application/json'},
+      body: JSON.stringify({name})}).then(r => r.json());
+    if (!created.key) throw new Error(created.detail || JSON.stringify(created));
+    newkey.innerHTML = `<div><strong>Copy this key now -- you won't see it again.</strong>
+      <div class="keybox">${created.key}</div></div>`;
+    newkey.classList.add('show');
+    document.getElementById('new-key-name').value = '';
+    load();
+  } catch (err) {
+    error.textContent = "Couldn't create key: " + (err.message || err);
+    error.classList.add('show');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('signout-link').onclick = (e) => {
+  e.preventDefault();
+  sessionStorage.removeItem('ledger_session');
+  window.location.href = '/login';
+};
+"""
+
+_KEYS_HTML = _page("API keys", _KEYS_BODY, _KEYS_SCRIPT)
 
 
 if __name__ == "__main__":

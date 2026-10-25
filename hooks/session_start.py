@@ -9,10 +9,20 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 
 ONBOARDING_SKILL = "/ledgers-receipts:onboarding"
-PORTAL = "python -m render.portal"
+
+
+def portal_command(path: Path) -> str:
+    """Start the portal from the plugin's own folder, pointed at the folder holding the answers."""
+    plugin = os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path(__file__).resolve().parent.parent)
+    business = str(path.resolve().parent)
+    return (
+        f"cd {shlex.quote(plugin)} && python3 -m render.portal "
+        f"--business-dir {shlex.quote(business)}"
+    )
 
 
 def onboarding_path() -> Path:
@@ -25,8 +35,9 @@ def message(path: Path) -> str:
         return (
             f"Receipts: this business isn't set up yet ({path.name} is missing). "
             "Before doing any money work, offer the owner two ways to set it up: answer a few "
-            f"questions here (run the {ONBOARDING_SKILL} skill), or open the owner portal "
-            f"(`{PORTAL}`) and finish its Your rules step. Both save {path.name}."
+            f"questions here (run the {ONBOARDING_SKILL} skill), or fill in the Your rules step "
+            "of the owner portal in their browser. If they pick the portal, start it for them in "
+            f"the background with `{portal_command(path)}`. Both save {path.name}."
         )
     try:
         answers = json.loads(path.read_text(encoding="utf-8"))

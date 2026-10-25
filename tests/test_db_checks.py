@@ -69,6 +69,7 @@ CASES = [
         {},
         "C6",
     ),
+    ("cancelled_order", ["UPDATE orders SET status = 'cancelled'"], {}, "C6"),
     (
         "double_pay",
         ["INSERT INTO payments VALUES ('pay_1', 'BILL-07', 80000, '000123454471', 'sent', 'x')"],
@@ -124,6 +125,24 @@ def test_case_blocks_exactly_its_checks(db, name, rows, args, check_ids):
 def test_failed_earlier_payment_doesnt_count(db):
     change(db, "INSERT INTO payments VALUES ('pay_1', 'BILL-07', 80000, 'x', 'failed', 'x')")
     assert run(db)["C7"] == "pass"
+
+
+def test_received_order_passes_c6(db):
+    change(db, "UPDATE orders SET status = 'received'")
+    assert run(db)["C6"] == "pass"
+
+
+def test_unknown_order_status_blocks_c6(db):
+    """The schema allows only three statuses, so a fake source supplies a fourth."""
+
+    class OddStatus(SqliteSource):
+        def order(self, order_id):
+            return {**super().order(order_id), "status": "void"}
+
+    with OddStatus(db) as source:
+        results = {r.id: r for r in evaluate("pay_bill", CLEAN, source)}
+    assert results["C6"].status == "block"
+    assert results["C6"].inputs["order.status"] == "void"
 
 
 def test_orphan_bill_leaves_amount_unknown(db):

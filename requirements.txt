@@ -1,0 +1,7 @@
+anthropic
+mcp
+jsonschema
+presidio-analyzer
+presidio-anonymizer
+pytest
+ruff

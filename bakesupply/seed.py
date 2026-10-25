@@ -35,6 +35,8 @@ CREATE TABLE orders (
 
 SUPPLIER = "Flour Co"
 SUPPLIER_EMAIL = "billing@flourco.example"
+# The account Flour Co is paid at. Must match the vendor row in bakery/seed.py (a test checks).
+SUPPLIER_BANK_ACCOUNT = "000123454471"
 
 # (sku, name, unit, price per unit in cents, stock)
 CATALOG = [

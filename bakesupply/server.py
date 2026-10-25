@@ -15,7 +15,7 @@ from typing import Annotated, Any
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from bakesupply.seed import DB_PATH, SUPPLIER, SUPPLIER_EMAIL
+from bakesupply.seed import DB_PATH, SUPPLIER, SUPPLIER_BANK_ACCOUNT, SUPPLIER_EMAIL
 
 MAX_QUANTITY = 10_000
 PAYMENT_TERMS_DAYS = 14
@@ -25,6 +25,12 @@ mcp = FastMCP("bakesupply")
 # Typed loosely so _check_quantity refuses bad values as {"ok": false}, not the SDK.
 Quantity = Annotated[Any, Field(description=f"Whole number of units, 1 to {MAX_QUANTITY}")]
 PoNumber = Annotated[Any, Field(description="The bakery's purchase order, like PO-2041")]
+
+
+def _db_error(exc: sqlite3.Error) -> dict[str, Any]:
+    """A database failure as a refusal. The usual cause is a bakesupply.db from an older version."""
+    msg = f"database problem ({exc}). If bakesupply.db was made before this version, run make reset"
+    return {"ok": False, "error": msg}
 
 
 class Refused(Exception):
@@ -117,6 +123,8 @@ def place_order(
             order = conn.execute("SELECT * FROM orders WHERE id = ?", (cur.lastrowid,)).fetchone()
     except Refused as exc:
         return {"ok": False, "error": str(exc)}
+    except sqlite3.OperationalError as exc:
+        return _db_error(exc)
     return {"ok": True, **_order(order)}
 
 
@@ -125,8 +133,11 @@ def get_invoice(order_id: str, db_path: Path | None = None) -> dict[str, Any]:
     match = re.fullmatch(r"ord_(\d+)", order_id.strip()) if isinstance(order_id, str) else None
     if match is None:
         return {"ok": False, "error": "order_id must look like ord_1"}
-    with _connect(db_path) as conn:
-        row = conn.execute("SELECT * FROM orders WHERE id = ?", (int(match[1]),)).fetchone()
+    try:
+        with _connect(db_path) as conn:
+            row = conn.execute("SELECT * FROM orders WHERE id = ?", (int(match[1]),)).fetchone()
+    except sqlite3.OperationalError as exc:
+        return _db_error(exc)
     if row is None:
         return {"ok": False, "error": f"unknown order: {order_id}"}
     issued = date.fromisoformat(row["created_at"][:10])
@@ -134,9 +145,10 @@ def get_invoice(order_id: str, db_path: Path | None = None) -> dict[str, Any]:
         "ok": True,
         "id": f"inv_{row['id']}",
         "order_id": f"ord_{row['id']}",
-        "po_number": row["po_number"],
+        "po_number": dict(row).get("po_number"),  # an older database has no such column
         "supplier": SUPPLIER,
         "supplier_email": SUPPLIER_EMAIL,
+        "pay_to_account": SUPPLIER_BANK_ACCOUNT,
         "amount_cents": row["total_cents"],
         "issued_at": row["created_at"],
         "due_date": (issued + timedelta(days=PAYMENT_TERMS_DAYS)).isoformat(),

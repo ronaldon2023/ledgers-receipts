@@ -1,9 +1,11 @@
 import sqlite3
+from contextlib import closing
 from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
+from bakery.seed import VENDORS
 from bakesupply import server
 from bakesupply.seed import SUPPLIER, SUPPLIER_EMAIL, seed
 from bakesupply.server import (
@@ -154,3 +156,28 @@ def test_tools_accept_a_po_number_and_issue_an_invoice(db: Path, monkeypatch) ->
     monkeypatch.setattr(server, "DB_PATH", db)
     assert server._place_order("FLR-AP-50", 2, "PO-2041")["po_number"] == "PO-2041"
     assert server._get_invoice("ord_1")["amount_cents"] == 10000
+
+
+def drop_po_column(db: Path) -> None:
+    """Make the database look like one seeded before PO numbers existed."""
+    with closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute("ALTER TABLE orders DROP COLUMN po_number")
+
+
+def test_an_older_database_gets_a_refusal_not_an_exception(db: Path) -> None:
+    drop_po_column(db)
+    result = place_order("FLR-AP-50", 1, db)
+    assert result["ok"] is False and "make reset" in result["error"]
+    assert stock(db, "FLR-AP-50") == 500 and list_orders(db) == []
+
+
+def test_invoice_for_an_order_in_an_older_database(db: Path) -> None:
+    place_order("FLR-AP-50", 1, db)
+    drop_po_column(db)
+    invoice = get_invoice("ord_1", db)
+    assert invoice["ok"] is True and invoice["po_number"] is None
+
+
+def test_invoice_says_where_to_pay_and_it_matches_the_bakerys_vendor(db: Path) -> None:
+    place_order("FLR-AP-50", 1, db)
+    assert get_invoice("ord_1", db)["pay_to_account"] == VENDORS[0][3]

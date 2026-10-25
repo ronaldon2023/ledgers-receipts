@@ -81,6 +81,9 @@ def test_order_items_add_up_and_bill_matches_order(tmp_path: Path) -> None:
     assert query(db, "SELECT order_id, amount_cents FROM bills WHERE id = 'BILL-07'") == [
         ("PO-2041", 80000)
     ]
+    assert query(db, "SELECT order_date FROM orders WHERE id = 'PO-2041'") == [
+        ("2026-10-20T09:12:00-07:00",)
+    ]
 
 
 def test_policies_and_budget_numbers(tmp_path: Path) -> None:

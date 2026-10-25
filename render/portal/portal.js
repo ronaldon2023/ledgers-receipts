@@ -117,7 +117,8 @@ Portal.passkey = function (card, text) {
 Portal.card = function (feed, c, ui) {
   var esc = Portal.esc, lv = Portal.status(Portal.LEVEL, c.level);
   var cls = { approve: "ask", stop: "stop", failed: "stop", mismatch: "odd" }[c.level] || "";
-  var head = '<div class="metaRow"><span class="b ' + lv[1] + '">' + esc(lv[0]) + '</span><span>' + esc(c.context) + ' · ' + esc(Portal.time(c.at)) + '</span></div>' +
+  // Approval cards skip the status line: the passkey button says what's needed.
+  var head = (c.level === "approve" ? '' : '<div class="metaRow"><span class="b ' + lv[1] + '">' + esc(lv[0]) + '</span><span>' + esc(c.context) + ' · ' + esc(Portal.time(c.at)) + '</span></div>') +
     '<h3>' + esc(c.title) + '</h3>' + (c.subtitle ? '<p class="muted">' + esc(c.subtitle) + '</p>' : '');
   var h = '<article class="card ' + cls + '">' + (c.amount_cents != null
     ? '<div class="cardhead"><div class="l">' + head + '</div><span class="amount">' + esc(Portal.money(c.amount_cents)) + '</span></div>' : head);
@@ -207,7 +208,7 @@ Portal.feedHtml = function (feed, ui) {
 
 /* ---------- pages ---------- */
 Portal.header = function (title, sub) {
-  return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1><p>' + Portal.esc(sub) + '</p></div>' +
+  return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1>' + (sub ? '<p>' + Portal.esc(sub) + '</p>' : '') + '</div>' +
     '<button type="button" class="btn" data-act="reset">Restart demo</button></header>';
 };
 Portal.dashboard = function (d, ui) {
@@ -232,7 +233,7 @@ Portal.dashboard = function (d, ui) {
   return h;
 };
 Portal.activities = function (d, ui) {
-  return Portal.header("AI agent activities", "Everything Claude did and what code decided, newest first. Open a row to see its steps.") +
+  return Portal.header("AI agent activities") +
     Portal.feedHtml(d.feed, ui);
 };
 Portal.itemsTable = function (items, total) {
@@ -305,7 +306,7 @@ Portal.page = function (d, ui) {
     : view === "activities" ? Portal.activities(d, ui) : Portal.dashboard(d, ui);
   if (broken) main = '<p class="banner" role="alert">Untrusted: the activity log failed its tamper check. Don\'t rely on anything here until it\'s fixed.</p>' + main;
   var cur = view === "policies" || view === "activities" ? view : "dashboard";
-  var side = '<div class="brand"><b>Receipts</b><span>' + esc(d.feed.business) + '</span></div>' +
+  var side = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>' +
     [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
       return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
     }).join("") + '<div class="meta"><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +

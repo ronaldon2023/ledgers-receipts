@@ -241,3 +241,14 @@ def test_activities_have_their_own_page() -> None:
     assert 'class="feed"' not in dash and 'href="#activities"' in dash
     assert 'class="feed"' in acts and "Needs your attention" not in acts
     assert '<a href="#activities" aria-current="page">Activities</a>' in acts
+
+
+@needs_node
+def test_approval_cards_have_no_status_line() -> None:
+    html = page(data("pending"))
+    attn = html[html.index("Needs your attention") : html.index("At a glance")]
+    assert attn.count('<article class="card ask">') == 2
+    assert 'class="metaRow"' not in attn
+    stopped = page(data("stopped"))
+    assert '<span class="b b-stop">Stopped</span>' in stopped
+    assert "<b>Ledger</b>" in html

@@ -22,7 +22,7 @@ def rows(db: Path, sql: str, *args: object) -> list[tuple]:
         return conn.execute(sql, args).fetchall()
 
 
-def test_six_tools_registered() -> None:
+def test_all_tools_registered() -> None:
     names = {t.name for t in asyncio.run(server.mcp.list_tools())}
     assert names == {
         "list_invoices",
@@ -31,6 +31,8 @@ def test_six_tools_registered() -> None:
         "save_draft",
         "send_email",
         "pay_bill",
+        "list_orders",
+        "create_order",
     }
 
 
@@ -104,3 +106,38 @@ def test_bad_input_returns_error_without_raising(db: Path, call) -> None:
     result = call()
     assert result["ok"] is False
     assert result["error"]
+
+
+def test_list_orders_includes_items(db: Path) -> None:
+    orders = {o["id"]: o for o in server.list_orders()["orders"]}
+    assert orders["PO-2041"]["total_cents"] == 80000
+    assert len(orders["PO-2041"]["items"]) == 2
+    assert server.list_bills()["bills"][0]["order_id"] == "PO-2041"
+
+
+def test_create_order_writes_order_and_items(db: Path) -> None:
+    item = {
+        "sku": "SUG-CN-50",
+        "name": "Cane sugar, 50 lb bag",
+        "quantity": 5,
+        "unit_price_cents": 4000,
+    }
+    result = server.create_order("V-1", [item])
+    assert result == {"ok": True, "id": "PO-2042", "total_cents": 20000}
+    assert rows(db, "SELECT status, total_cents FROM orders WHERE id = 'PO-2042'") == [
+        ("placed", 20000)
+    ]
+    assert rows(db, "SELECT quantity FROM order_items WHERE order_id = 'PO-2042'") == [(5,)]
+
+
+@pytest.mark.parametrize(
+    "vendor, items",
+    [
+        ("V-9", [{"sku": "A", "name": "a", "quantity": 1, "unit_price_cents": 1}]),
+        ("V-1", []),
+        ("V-1", [{"sku": "A", "name": "a", "quantity": 0, "unit_price_cents": 1}]),
+        ("V-1", [{"sku": "", "name": "a", "quantity": 1, "unit_price_cents": 1}]),
+    ],
+)
+def test_create_order_bad_input(db: Path, vendor: str, items: list) -> None:
+    assert server.create_order(vendor, items)["ok"] is False

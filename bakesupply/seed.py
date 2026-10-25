@@ -25,6 +25,7 @@ CREATE TABLE products (
 CREATE TABLE orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sku TEXT NOT NULL REFERENCES products(sku),
+    po_number TEXT,
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price_cents INTEGER NOT NULL,
     total_cents INTEGER NOT NULL,

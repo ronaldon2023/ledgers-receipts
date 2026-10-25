@@ -10,3 +10,7 @@ logs/
 claims/last_raw.json
 .claude/settings.local.json
 .DS_Store
+
+# Written by python -m receipts.verify
+fixtures/portal/feed_live.json
+fixtures/portal/receipt_live_*.json

@@ -245,6 +245,22 @@ Portal.feedHtml = function (feed, ui) {
   return h + '</div></section>';
 };
 
+/* Sidebar icons: 20px line icons drawn in the text color. */
+Portal.ICON = (function () {
+  var svg = function (d) {
+    return '<svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+  };
+  return {
+    dashboard: svg('<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
+    activities: svg('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
+    policies: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
+    onboarding: svg('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'),
+    reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
+    collapse: svg('<path d="M15 6l-6 6 6 6"/>'),
+    expand: svg('<path d="M9 6l6 6-6 6"/>')
+  };
+})();
+
 /* ---------- pages ---------- */
 Portal.header = function (title, sub) {
   return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1>' + (sub ? '<p>' + Portal.esc(sub) + '</p>' : '') + '</div></header>';
@@ -439,6 +455,7 @@ Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
   d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, policies: d.policies, onboarding: d.onboarding };
   var brand = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>';
+  var collapsed = !!ui.navCollapsed;
   if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });
   var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d)
@@ -446,11 +463,15 @@ Portal.page = function (d, ui) {
   if (broken) main = '<p class="banner" role="alert">Untrusted: the activity log failed its tamper check. Don\'t rely on anything here until it\'s fixed.</p>' + main;
   // An order page keeps the page you came from highlighted.
   var cur = view === "policies" || view === "activities" ? view : view.indexOf("order/") === 0 && ui.from ? ui.from : "dashboard";
-  var side = brand +
+  // Collapsible: the toggle shrinks the sidebar to icons; each item keeps its name as a tooltip.
+  var toggle = '<button type="button" class="navtoggle" data-act="nav" aria-expanded="' + !collapsed + '" aria-label="' +
+    (collapsed ? "Expand sidebar" : "Collapse sidebar") + '" title="' + (collapsed ? "Expand sidebar" : "Collapse sidebar") + '">' + Portal.ICON[collapsed ? "expand" : "collapse"] + '</button>';
+  var item = function (icon, label) { return Portal.ICON[icon] + '<span class="lbl">' + esc(label) + '</span>'; };
+  var side = '<div class="sidetop">' + brand + toggle + '</div>' +
     [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
-      return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
-    }).join("") + '<div class="navbtns"><button type="button" class="btn" data-onb="again">Start onboarding</button>' +
-    '<button type="button" class="btn" data-act="reset">Restart demo</button></div>' +
+      return '<a href="#' + l[0] + '" title="' + esc(l[1]) + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + item(l[0], l[1]) + '</a>';
+    }).join("") + '<div class="navbtns"><button type="button" class="btn" data-onb="again" title="Start onboarding">' + item("onboarding", "Start onboarding") + '</button>' +
+    '<button type="button" class="btn" data-act="reset" title="Restart demo">' + item("reset", "Restart demo") + '</button></div>' +
     '<div class="meta"><span>' + esc(Portal.day(d.feed.as_of) + " · " + Portal.time(d.feed.as_of)) + '</span><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
     '<span>Signed in as ' + esc(d.feed.owner) + '</span></div>';
   return { side: side, main: main };
@@ -464,7 +485,7 @@ if (typeof document !== "undefined") (function () {
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "null");
     if (saved && STATES.indexOf(saved.state) >= 0) { ui.state = saved.state; ui.dismissed = saved.dismissed || {}; ui.ran = saved.ran || {}; }
-    if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; }
+    if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; ui.navCollapsed = !!saved.navCollapsed; }
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
   // ?state= starts that demo state fresh, so a rehearsal's clicks don't leak into the next run.
@@ -485,6 +506,7 @@ if (typeof document !== "undefined") (function () {
     var out = Portal.page(data, ui);
     side.innerHTML = out.side;
     side.hidden = !out.side;
+    side.classList.toggle("collapsed", !!ui.navCollapsed);
     app.innerHTML = out.main;
     document.title = (TITLES[ui.view] || "Order " + ui.view.slice(6)) + " · Ledger";
   }
@@ -496,7 +518,7 @@ if (typeof document !== "undefined") (function () {
   function set(p) {
     for (var k in p) ui[k] = p[k];
     try {
-      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran, onboarded: ui.onboarded, rules: ui.onboard.rules }));
+      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran, navCollapsed: !!ui.navCollapsed, onboarded: ui.onboarded, rules: ui.onboard.rules }));
     } catch (e) { /* ignore */ }
     render();
   }
@@ -587,6 +609,7 @@ if (typeof document !== "undefined") (function () {
     if (t.hasAttribute("data-feedview")) return set({ feedView: t.getAttribute("data-feedview") });
     var card = (data.feed.attention || []).filter(function (c) { return c.id === t.getAttribute("data-card"); })[0];
     var act = t.getAttribute("data-act");
+    if (act === "nav") return set({ navCollapsed: !ui.navCollapsed });
     if (act === "reset") { clearInterval(timer); clearTimeout(timer); ui.running = ui.leaving = ui.entering = null; ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
     if (act === "cancel") return set({ confirming: null });
     if (!card) return;

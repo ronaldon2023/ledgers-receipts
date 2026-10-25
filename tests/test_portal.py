@@ -292,7 +292,7 @@ def test_activities_have_their_own_page() -> None:
     dash, acts = page(data("stopped")), page(data("stopped"), "activities")
     assert 'class="feed"' not in dash and 'href="#activities"' in dash
     assert 'class="feed"' in acts and "Needs your attention" not in acts
-    assert '<a href="#activities" aria-current="page">Activities</a>' in acts
+    assert 'href="#activities" title="Activities" aria-current="page">' in acts
 
 
 @needs_node
@@ -452,9 +452,8 @@ def test_by_order_is_first_and_default_and_time_moved_to_sidebar() -> None:
 @needs_node
 def test_every_page_has_a_start_onboarding_button() -> None:
     for view in ["dashboard", "activities", "policies", "order/PO-2041"]:
-        assert (
-            '<button type="button" class="btn" data-onb="again">Start onboarding</button>'
-            in page(data("stopped"), view)
+        assert 'class="btn" data-onb="again" title="Start onboarding">' in page(
+            data("stopped"), view
         )
 
 
@@ -647,7 +646,7 @@ def test_order_page_details_from_review() -> None:
     assert "· proposed Sun 25 Oct" in proposed and "· placed" not in proposed
     receipt = page(data("stopped"), "order/PO-2041", **{"from": "activities"})
     assert '<details class="steps"><summary>Steps Claude took on this order (' in receipt
-    assert '<a href="#activities" aria-current="page">' in receipt
+    assert 'href="#activities" title="Activities" aria-current="page">' in receipt
 
 
 @needs_node
@@ -680,3 +679,14 @@ def test_cleaned_up_glance_tiles_and_activities_bar() -> None:
     row = row[: row.index('<div class="feed">')]
     assert row.index('class="filters"') < row.index('class="viewtoggle"')
     assert 'class="feedbar"' not in acts
+
+
+@needs_node
+def test_sidebar_is_collapsible() -> None:
+    side = run([{"data": data("pending"), "ui": {"view": "dashboard", "filter": "all"}}])[0]["side"]
+    assert 'data-act="nav" aria-expanded="true" aria-label="Collapse sidebar"' in side
+    for label in ["Dashboard", "Activities", "Policies", "Start onboarding", "Restart demo"]:
+        assert f'title="{label}"' in side and f'<span class="lbl">{label}</span>' in side
+    assert side.count('<svg class="ico"') == 6  # five items plus the toggle
+    folded = run([{"data": data("pending"), "ui": {"view": "dashboard", "navCollapsed": True}}])[0]
+    assert 'aria-expanded="false" aria-label="Expand sidebar"' in folded["side"]

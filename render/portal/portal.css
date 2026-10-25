@@ -41,7 +41,7 @@ a:hover { color: var(--brown-hover); }
 .brand { display: flex; flex-direction: column; gap: 2px; padding: 0 10px 22px; }
 .brand b { font-size: 20px; letter-spacing: -0.01em; }
 .brand span { font-size: 13px; color: var(--side-muted); }
-.side a { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--side-fg); text-decoration: none; font-size: 15px; }
+.side a { display: flex; justify-content: flex-start; gap: 12px; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--side-fg); text-decoration: none; font-size: 15px; }
 .side a:hover { background: var(--side-2); color: var(--side-fg); }
 .side a[aria-current="page"], .side a[aria-current="page"]:hover { background: var(--brown); color: var(--on-brown); font-weight: 600; }
 .side .count { background: #E9A24A; color: #22170F; font-weight: 700; font-size: 12px; border-radius: 10px; padding: 1px 8px; }
@@ -213,6 +213,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .card.entering { animation: appear 0.5s ease both; }
 @keyframes dissolve { to { opacity: 0; transform: scale(0.98); filter: blur(2px); } }
 @keyframes appear { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+/* Collapsible sidebar */
+.sidetop { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.navtoggle { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--side-muted); cursor: pointer; }
+.navtoggle:hover { background: var(--side-2); color: var(--side-fg); }
+.side .ico { flex: none; }
+.side .navbtns .btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
+@media (min-width: 761px) {
+  .side { transition: flex-basis 150ms, max-width 150ms; }
+  .side.collapsed { flex: 0 0 76px; max-width: 76px; padding-right: 12px; padding-left: max(12px, env(safe-area-inset-left, 0px)); }
+  .side.collapsed .brand, .side.collapsed .meta { display: none; }
+  .side.collapsed .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .side.collapsed .sidetop { justify-content: center; padding-bottom: 18px; }
+  .side.collapsed a, .side.collapsed .navbtns .btn { justify-content: center; padding: 0; }
+}
 /* Onboarding */
 .side[hidden] { display: none; }
 .side[hidden] + main { max-width: 1000px; margin-inline: auto; }
@@ -249,7 +263,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .side .meta button { background: none; border: 0; padding: 0; color: var(--side-muted); font: inherit; text-decoration: underline; cursor: pointer; text-align: left; min-height: 32px; }
 @media (max-width: 760px) {
   .side { position: static; height: auto; max-width: none; flex-basis: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; padding-block: 12px; padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-  .brand { padding: 0 10px 0 0; flex-basis: 100%; }
+  .brand { padding: 0 10px 0 0; }
+  .sidetop { flex-basis: 100%; }
+  .navtoggle { display: none; }
   .side .meta { display: none; }
   .stepper { padding: 16px; gap: 8px; }
   .stepper li:not(.on) .lbl { display: none; }

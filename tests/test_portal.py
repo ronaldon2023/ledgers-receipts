@@ -192,7 +192,7 @@ def test_unknown_status_renders_as_unknown() -> None:
     d = data("stopped")
     d["receipt"]["checks"][0]["status"] = "constructor"
     d["receipt"]["verdict"] = "SOMETHING_NEW"
-    next(e for e in d["feed"]["events"] if e["id"] == "ev_mismatch")["level"] = "brand_new"
+    d["feed"]["events"][0]["level"] = "brand_new"
     html = page(d, "order/PO-2041") + page(d, "activities")
     assert html.count(">Unknown<") >= 3
 
@@ -201,7 +201,7 @@ def test_unknown_status_renders_as_unknown() -> None:
 def test_data_is_escaped() -> None:
     d = copy.deepcopy(data("stopped"))
     stopped = next(c for c in d["feed"]["attention"] if c["id"] == "att_stopped")
-    next(e for e in d["feed"]["events"] if e["id"] == "ev_mismatch")["title"] = XSS
+    d["feed"]["events"][0]["title"] = XSS
     stopped["quote"]["text"] = XSS
     d["feed"]["steps"][0]["quote"] = XSS
     d["receipt"]["checks"][0]["title"] = XSS
@@ -273,7 +273,7 @@ def test_restock_order_card_needs_approval() -> None:
     card = html[html.rindex("<article", 0, start) : html.index("</article>", start)]
     assert 'class="card ask"' in card
     assert 'class="checks"' not in card
-    assert "Steps Claude took (5)" in card
+    assert "Steps Claude took (6)" in card
     assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
     assert "Approve with passkey" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
@@ -298,7 +298,7 @@ def test_activities_have_their_own_page() -> None:
 
 @needs_node
 def test_approval_cards_have_no_status_line() -> None:
-    html = page(data("pending"))
+    html = page(data("pending"), **CHECKED)
     attn = html[html.index("Needs your attention") :]
     assert attn.count('<article class="card ask">') == 2
     assert 'class="metaRow"' not in attn
@@ -511,26 +511,15 @@ def test_demo_buttons_sit_in_sidebar_above_the_date() -> None:
 
 
 @needs_node
-def test_three_cards_and_start_check_shows_its_result() -> None:
+def test_inventory_check_card_comes_first_and_reveals_the_order() -> None:
     before = page(data("pending"))
     attn = before[before.index("Needs your attention") :]
-    assert attn.count("<article ") == 3
-    order = [
-        attn.index(t)
-        for t in [
-            "Start this week&#39;s inventory check",
-            "Order 3 bags of cane sugar from Flour Co",
-            "Pay Flour Co $800.00",
-        ]
-    ]
-    assert order == sorted(order)
+    assert attn.index("Start this week&#39;s inventory check") < attn.index("Pay Flour Co $800.00")
     assert ">Start check<" in attn and ">Not now<" in attn
-    assert "Inventory check finished" not in before
+    assert "cane sugar" not in before
     after = page(data("pending"), **CHECKED)
-    attn = after[after.index("Needs your attention") :]
-    assert "Start this week&#39;s inventory check" not in attn
-    assert attn.index("Inventory check finished") < attn.index("Order 3 bags of cane sugar")
-    assert "Steps Claude took (5)" in attn[: attn.index("Order 3 bags")]
+    assert "Start this week&#39;s inventory check" not in after
+    assert "Order 3 bags of cane sugar from Flour Co" in after
 
 
 @needs_node
@@ -551,3 +540,73 @@ def test_declining_the_restock_places_nothing() -> None:
     html = page(data("pending"), "activities", ran={"att_inventory": True}, dismissed=d)
     assert "bakesupply.place_order" not in html
     assert "You declined" in html
+
+
+@needs_node
+def test_start_check_shows_the_mcp_running() -> None:
+    running = {"card": "att_inventory", "action": 0, "step": 1}
+    html = page(data("pending"), running=running)
+    card = html[html.index("Start this week&#39;s inventory check") :]
+    card = card[: card.index("</article>")]
+    assert 'role="status" aria-live="polite"' in card
+    assert "Running the check through the BakeSupply MCP…" in card
+    assert card.index("<code>inventory</code>") < card.index(
+        "<code>bakesupply.list_products</code>"
+    )
+    assert (
+        '<li class="done">' in card and '<li class="now">' in card and '<li class="todo">' in card
+    )
+    assert ">Start check<" not in card
+
+
+@needs_node
+def test_running_labels_are_escaped() -> None:
+    d = copy.deepcopy(data("pending"))
+    action = d["feed"]["attention"][0]["actions"][0]
+    action["running"] = XSS
+    action["progress"][0]["label"] = XSS
+    html = page(d, running={"card": "att_inventory", "action": 0, "step": 0})
+    assert "<script" not in html
+
+
+@needs_node
+def test_finished_check_dissolves_and_order_card_appears() -> None:
+    leaving = page(
+        data("pending"),
+        running={"card": "att_inventory", "action": 0, "step": 4},
+        leaving="att_inventory",
+    )
+    assert '<article class="card  leaving">' in leaving
+    entering = page(data("pending"), entering={"att_order": True}, **CHECKED)
+    assert '<article class="card ask entering">' in entering
+
+
+@needs_node
+def test_onboarding_uses_a_stepper() -> None:
+    html = onboarding(1)["main"]
+    stepper = html[html.index('<ol class="stepper"') : html.index("</ol>")]
+    assert stepper.count("<li ") == 4
+    assert '<li class="done"><span class="num" aria-hidden="true">✓</span>' in stepper
+    assert (
+        '<li class="on" aria-current="step"><span class="num" aria-hidden="true">2</span>'
+        in stepper
+    )
+    assert stepper.count('<li class="todo">') == 2
+    assert 'class="stages"' not in html
+
+
+@needs_node
+def test_youre_set_lists_items_vertically() -> None:
+    html = onboarding(3)["main"]
+    assert html.count('<ol class="summary"><li><b>Claude does the work</b>') == 1
+    assert html.count("<li><b>") == 4
+    assert 'class="quote"' not in html
+
+
+@needs_node
+def test_bill_card_has_no_subtitle() -> None:
+    html = page(data("pending"))
+    card = html[html.index("Pay Flour Co $800.00 for bill BILL-07") :]
+    card = card[: card.index("</article>")]
+    assert 'class="muted"' not in card
+    assert "16 bags of flour · due" not in card

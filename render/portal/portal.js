@@ -121,6 +121,8 @@ Portal.card = function (feed, c, ui) {
   // Approval and task cards skip the status line: their buttons say what's needed.
   var head = (c.level === "approve" || c.level === "task" ? '' : '<div class="metaRow"><span class="b ' + lv[1] + '">' + esc(lv[0]) + '</span><span>' + esc(c.context) + ' · ' + esc(Portal.time(c.at)) + '</span></div>') +
     '<h3>' + esc(c.title) + '</h3>' + (c.subtitle ? '<p class="muted">' + esc(c.subtitle) + '</p>' : '');
+  // leaving / entering animate the handoff from a finished run to the card it produced.
+  cls += (ui.leaving === c.id ? " leaving" : "") + ((ui.entering || {})[c.id] ? " entering" : "");
   var h = '<article class="card ' + cls + '">' + (c.amount_cents != null
     ? '<div class="cardhead"><div class="l">' + head + '</div><span class="amount">' + esc(Portal.money(c.amount_cents)) + '</span></div>' : head);
   if (c.body) h += '<p>' + esc(c.body) + '</p>';
@@ -128,11 +130,23 @@ Portal.card = function (feed, c, ui) {
   if (c.pair) h += '<div class="pair">' + c.pair.map(Portal.quote).join("") + '</div>';
   if (c.next_step) h += '<p><strong>Next step:</strong> ' + esc(c.next_step) + '</p>';
   var actions = c.actions || [], wait = ui.confirming && ui.confirming.card === c.id ? actions[ui.confirming.action] : null;
+  var run = ui.running && ui.running.card === c.id ? ui.running : null;
+  if (run) return h + Portal.running(actions[run.action], run.step) + '</article>';
   h += wait ? Portal.passkey(c.id, wait.confirm) : '<div class="actions">' + actions.map(function (a, i) {
     if (a.href) return '<a class="btn ghost linkbtn" href="' + esc(Portal.href(a.href)) + '">' + esc(a.label) + '</a>';
     return '<button type="button" class="btn' + (a.primary ? ' primary' : '') + '" data-card="' + esc(c.id) + '" data-action="' + i + '">' + esc(a.label) + '</button>';
   }).join("") + '</div>';
   return h + (Portal.pick(feed, c.steps).length ? Portal.stepsBlock(feed, c.steps) : '') + '</article>';
+};
+// While a run is going (e.g. Start check), the card shows what the MCP is doing, one step at a time.
+Portal.running = function (a, step) {
+  var esc = Portal.esc;
+  return '<div class="running" role="status" aria-live="polite"><div class="head"><span class="spinner" aria-hidden="true"></span>' +
+    esc(a.running || "Running") + '…</div><ol>' + (a.progress || []).map(function (p, i) {
+      var mark = i < step ? '<span class="ic-ok">✓</span>' : i === step ? '<span class="spinner sm" aria-hidden="true"></span>' : '<span class="dot"></span>';
+      return '<li class="' + (i < step ? "done" : i === step ? "now" : "todo") + '">' + mark + '<span>' + esc(p.label) +
+        (p.call ? ' <code>' + esc(p.call) + '</code>' : '') + '</span></li>';
+    }).join("") + '</ol></div>';
 };
 Portal.attention = function (feed, ui) {
   return (feed.attention || []).filter(function (c) { return !(ui.dismissed || {})[c.id]; });
@@ -374,8 +388,10 @@ Portal.onboarding = function (d, ui) {
   var esc = Portal.esc, o = ui.onboard || {}, step = o.step || 0, r = o.rules || Portal.ruleDefaults(d.policies, d.onboarding);
   var back = '<button type="button" class="btn ghost" data-onb="back">Back</button>';
   var h = '<header class="top"><div><h1>Set up Ledger</h1><p>' + esc(d.feed.business) + ' · step ' + (step + 1) + ' of 4</p></div></header>' +
-    '<ol class="stages" aria-label="Setup steps">' + Portal.ONBOARD_STEPS.map(function (s, i) {
-      return '<li' + (i === step ? ' class="on" aria-current="step"' : '') + '><b>' + esc(s) + '</b><span class="tag ' + (i < step ? 'ic-ok">Done' : i === step ? 'ic-ask">Now' : 'ic-mute">Next') + '</span></li>';
+    '<ol class="stepper" aria-label="Setup steps">' + Portal.ONBOARD_STEPS.map(function (s, i) {
+      var state = i < step ? "done" : i === step ? "on" : "todo";
+      return '<li class="' + state + '"' + (i === step ? ' aria-current="step"' : '') + '><span class="num" aria-hidden="true">' +
+        (i < step ? '✓' : i + 1) + '</span><span class="lbl">' + esc(s) + (i < step ? '<span class="sr"> (done)</span>' : '') + '</span></li>';
     }).join("") + '</ol><section class="card onb">';
   if (step === 0) {
     h += '<h2>Welcome, ' + esc(d.feed.owner) + '</h2><p>Ledger shows you everything Claude does for your business. Claude does the work, plain code checks every step, and nothing over your limits happens without you.</p>' +
@@ -396,7 +412,7 @@ Portal.onboarding = function (d, ui) {
       return '<label class="field"><span><b>' + esc(label) + '</b></span><span class="dollar">$<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + (cents == null ? "" : esc(Math.round(cents / 100))) + '"' +
         (empty ? ' placeholder="' + esc(empty) + '"' : "") + '></span></label>';
     };
-    h += '<h2>Your rules</h2><p>Plain code checks these before every action Claude takes. Claude can\'t change them.</p>' +
+    h += '<h2>Your rules</h2><p>These are the policies Ledger checks on every run your AI agents make.</p>' +
       '<h3>Order</h3><label class="field"><span><b>Approved suppliers</b></span><input id="r-suppliers" type="text" value="' + esc(r.suppliers) + '"></label>' +
       '<h3>Payment</h3>' + num("r-threshold", "Ask me before paying more than", r.threshold_cents) +
       '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.no_budget ? null : r.budget_cents, "No limit") +
@@ -405,11 +421,11 @@ Portal.onboarding = function (d, ui) {
       '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file</b></span></li></ul>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="rules">Save rules</button>' + back + '</div>';
   } else {
-    h += '<h2>You\'re set</h2><div class="two">' +
-      '<div class="quote"><b>Claude does the work</b>Orders supplies, pays bills and answers email, using the order and payment skills.</div>' +
-      '<div class="quote"><b>Code checks every step</b>Approved suppliers: ' + esc(r.suppliers || "none yet") + (r.no_budget ? '. No monthly budget limit. Keep ' : '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ') + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</div>' +
-      '<div class="quote"><b>You approve</b>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</div>' +
-      '<div class="quote"><b>Alerts</b>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</div></div>' +
+    h += '<h2>You\'re set</h2><ol class="summary">' +
+      '<li><b>Claude does the work</b><span>Orders supplies, pays bills and answers email, using the order and payment skills.</span></li>' +
+      '<li><b>Code checks every step</b><span>Approved suppliers: ' + esc(r.suppliers || "none yet") + (r.no_budget ? '. No monthly budget limit. Keep ' : '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ') + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</span></li>' +
+      '<li><b>You approve</b><span>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</span></li>' +
+      '<li><b>Alerts</b><span>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</span></li></ol>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="finish">Go to dashboard</button>' + back + '</div>';
   }
   return h + '</section>';
@@ -491,6 +507,33 @@ if (typeof document !== "undefined") (function () {
     });
   }
   function go(state) { last = ""; set({ state: state, confirming: null }); load(); }
+  // Demo run: step through the action's progress list, then reveal what the run produced.
+  var timer = null;
+  function startRun(card, i) {
+    if (ui.running) return;
+    var steps = card.actions[i].progress.length;
+    ui.running = { card: card.id, action: i, step: 0 };
+    set({});
+    timer = setInterval(function () {
+      ui.running.step += 1;
+      if (ui.running.step >= steps) {
+        clearInterval(timer);
+        ui.leaving = card.id; // the finished card dissolves...
+        timer = setTimeout(function () { finishRun(card); }, 450);
+      }
+      set({});
+    }, 900);
+  }
+  function finishRun(card) {
+    ui.running = null;
+    ui.leaving = null;
+    ui.ran[card.id] = true;
+    ui.dismissed[card.id] = true;
+    ui.entering = {}; // ...and the cards it produced appear
+    (data.feed.attention || []).forEach(function (c) { if (c.requires === card.id) ui.entering[c.id] = true; });
+    set({});
+    timer = setTimeout(function () { ui.entering = null; }, 700);
+  }
   function onboardClick(t) {
     var o = ui.onboard, step = o.step || 0, act = t.getAttribute("data-onb");
     if (t.hasAttribute("data-copy")) {
@@ -523,11 +566,12 @@ if (typeof document !== "undefined") (function () {
     if (t.hasAttribute("data-feedview")) return set({ feedView: t.getAttribute("data-feedview") });
     var card = (data.feed.attention || []).filter(function (c) { return c.id === t.getAttribute("data-card"); })[0];
     var act = t.getAttribute("data-act");
-    if (act === "reset") { ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
+    if (act === "reset") { clearInterval(timer); clearTimeout(timer); ui.running = ui.leaving = ui.entering = null; ui.dismissed = {}; ui.ran = {}; ui.filter = "all"; return go("pending"); }
     if (act === "cancel") return set({ confirming: null });
     if (!card) return;
     var i = act === "passkey" && ui.confirming ? ui.confirming.action : +t.getAttribute("data-action"), a = card.actions[i];
     if (a.confirm && act !== "passkey") return set({ confirming: { card: card.id, action: i } });
+    if (a.progress) return startRun(card, i);
     if (a.run) ui.ran[card.id] = true; // e.g. Start check: reveals what that run produced
     if (a.dismiss || a.run) { ui.dismissed[card.id] = true; set({ confirming: null }); }
     else if (a.next) go(a.next);

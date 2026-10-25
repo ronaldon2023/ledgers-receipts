@@ -1,3 +1,3 @@
-from checks.gate import CheckResult, evaluate
+from checks.gate import CheckResult, allowed, evaluate
 
-__all__ = ["CheckResult", "evaluate"]
+__all__ = ["CheckResult", "allowed", "evaluate"]

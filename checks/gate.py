@@ -1,9 +1,10 @@
 """Checks a write must pass before it runs: the plan's C4 to C8 for pay_bill.
 
-The MCP server's write tool calls evaluate() first and writes only if no result is "block".
-Each check reads the records through a Source and never trusts the agent's arguments over
-them. A check that crashes blocks (fail closed). Ids and statuses follow
-docs/order-lifecycle-plan.md section 5; C1 to C3 need the owner's policy (issue #9).
+The MCP server's write tool calls evaluate() first and writes only if no result is "block",
+which is what allowed() tests. Each check reads the records through a Source and never
+trusts the agent's arguments over them. Anything that goes wrong blocks (fail closed). Ids
+and statuses follow docs/order-lifecycle-plan.md section 5; C1 to C3 need the owner's policy
+(issue #9).
 
 Usage: python -m checks pay_bill '{"bill_id": "BILL-07", ...}' [--db bakery.db]   (see __main__)
 """
@@ -22,6 +23,22 @@ class CheckResult:
     title: str
     evidence: list[str] = field(default_factory=list)  # record refs, e.g. "bills:BILL-07"
     inputs: dict = field(default_factory=dict)  # the values compared, account numbers masked
+
+
+def allowed(results: list[CheckResult]) -> bool:
+    """Whether the write may go ahead. Only "block" stops it; "ask" is the approval hook's."""
+    return not any(r.status == "block" for r in results)
+
+
+def _account(value: object) -> str | None:
+    """The account's digits, or None if it isn't one. ASCII spaces and dashes are formatting,
+    so "0001 2345-4471" is the same account; anything else (a tab, a Unicode space or digit,
+    a letter) isn't stripped, so the check can't pass a value the payment would store
+    differently."""
+    if not isinstance(value, str):
+        return None
+    digits = value.replace(" ", "").replace("-", "")
+    return digits if re.fullmatch(r"[0-9]+", digits) else None
 
 
 def _last4(account: object) -> str:
@@ -56,19 +73,28 @@ class Payment:
 def c4_account_on_file(p: Payment) -> CheckResult:
     """Both the account being paid and the account the bill asks for must be the one on file;
     a bill asking for a new account is the bank-change fraud even if the agent ignores it."""
-    to, asked, on_file = p.args["to_account"], p.bill["pay_to_account"], p.vendor["bank_account"]
-    inputs = {"to_account": _last4(to), "bill_asks": _last4(asked), "on_file": _last4(on_file)}
+    raw_to, raw_asked = p.args["to_account"], p.bill["pay_to_account"]
+    to, asked, on_file = _account(raw_to), _account(raw_asked), _account(p.vendor["bank_account"])
+    inputs = {
+        "to_account": _last4(to or raw_to),
+        "bill_asks": _last4(asked or raw_asked),
+        "on_file": _last4(on_file),
+    }
     ev = [f"bills:{p.bill['id']}", f"vendors:{p.vendor['id']}"]
     name = p.vendor["name"]
-    if not (isinstance(on_file, str) and on_file.strip()):
-        return CheckResult("C4", "block", f"{name} has no account on file", ev, inputs)
+    if on_file is None:
+        return CheckResult("C4", "block", f"{name} has no valid account on file", ev, inputs)
+    if to is None:
+        title = f"Account to pay {_last4(raw_to)} isn't a plain account number"
+        return CheckResult("C4", "block", title, ev, inputs)
     if to != on_file:
         title = f"Account {_last4(to)} differs from {name}'s on file {_last4(on_file)}"
         if _last4(to) == _last4(on_file):
             title = f"Account {_last4(to)} is not {name}'s on file; only the last 4 digits match"
         return CheckResult("C4", "block", title, ev, inputs)
     if asked != on_file:
-        title = f"The bill asks to pay {_last4(asked)}, not {name}'s on file {_last4(on_file)}"
+        shown = _last4(asked or raw_asked)
+        title = f"The bill asks to pay {shown}, not {name}'s on file {_last4(on_file)}"
         return CheckResult("C4", "block", title, ev, inputs)
     return CheckResult("C4", "pass", f"Pays {name}'s account on file", ev, inputs)
 
@@ -78,6 +104,8 @@ def c5_amounts_agree(p: Payment) -> CheckResult:
     ordered = p.order["total_cents"] if p.order else None
     inputs = {"amount_cents": paying, "bill_cents": billed, "order_cents": ordered}
     ev = [f"bills:{p.bill['id']}"] + ([f"orders:{p.order['id']}"] if p.order else [])
+    if type(paying) is not int:  # bool is an int subclass; "80000" and 80000.0 aren't cents
+        return CheckResult("C5", "block", "The amount must be whole cents", ev, inputs)
     if paying != billed:
         title = f"Paying {_money(paying)} against a bill for {_money(billed)}"
         return CheckResult("C5", "block", title, ev, inputs)
@@ -87,6 +115,9 @@ def c5_amounts_agree(p: Payment) -> CheckResult:
         title = f"Bill is {_money(billed)} but order {p.order['id']} totals {_money(ordered)}"
         return CheckResult("C5", "block", title, ev, inputs)
     return CheckResult("C5", "pass", f"Payment, bill and order all {_money(paying)}", ev, inputs)
+
+
+OPEN_ORDER_STATUSES = ("placed", "received")
 
 
 def c6_bill_has_order(p: Payment) -> CheckResult:
@@ -99,6 +130,11 @@ def c6_bill_has_order(p: Payment) -> CheckResult:
     ev.append(f"orders:{p.order['id']}")
     if p.order["vendor_id"] != p.bill["vendor_id"]:
         title = f"Bill {p.bill['id']} is from a different supplier than order {p.order['id']}"
+        return CheckResult("C6", "block", title, ev, inputs)
+    # Cancelling isn't supported yet (issue #22), so any status but these two blocks.
+    status = inputs["order.status"] = p.order["status"]
+    if status not in OPEN_ORDER_STATUSES:
+        title = f"Order {p.order['id']} is {status}, so its bill can't be paid"
         return CheckResult("C6", "block", title, ev, inputs)
     return CheckResult(
         "C6", "pass", f"Bill {p.bill['id']} is for order {p.order['id']}", ev, inputs
@@ -171,5 +207,6 @@ def evaluate(
         return [CheckResult("C0", "block", f"No checks are defined for {action}")]
     try:
         return ACTIONS[action](args, source)
-    except Exception as e:  # noqa: BLE001 - a missing argument or a broken source blocks
-        return [CheckResult("C0", "block", f"Checks couldn't run: {type(e).__name__} {e}")]
+    except Exception as e:  # noqa: BLE001 - a broken source blocks
+        # The type only: an exception's message can echo an argument, such as an account.
+        return [CheckResult("C0", "block", f"Checks couldn't run: {type(e).__name__}")]

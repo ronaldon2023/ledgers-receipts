@@ -23,4 +23,3 @@ demo:
 
 receipt:
 	$(PY) -m receipts.verify
-	$(PY) render/render.py receipt.json -o receipt.html

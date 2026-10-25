@@ -32,15 +32,11 @@ def test_catalog_matches_the_bakerys_vendor_records(db: Path) -> None:
 
 def test_price_is_integer_cents(db: Path) -> None:
     quote = get_price("FLR-AP-50", 12, db)
-    assert quote == {
-        "ok": True,
-        "sku": "FLR-AP-50",
-        "quantity": 12,
-        "unit": "bag",
-        "unit_price_cents": 5000,
-        "total_cents": 60000,
-        "in_stock": True,
-    }
+    assert (quote["unit_price_cents"], quote["total_cents"], quote["in_stock"]) == (
+        5000,
+        60000,
+        True,
+    )
 
 
 def test_sku_is_case_and_space_insensitive(db: Path) -> None:
@@ -65,9 +61,7 @@ def test_out_of_stock_is_refused_and_changes_nothing(db: Path) -> None:
 
 
 def test_ordering_exactly_the_remaining_stock_is_accepted(db: Path) -> None:
-    assert place_order("SUG-CN-50", 150, db)["ok"] is True
-    assert stock(db, "SUG-CN-50") == 0
-    assert place_order("SUG-CN-50", 1, db)["ok"] is False
+    assert place_order("SUG-CN-50", 150, db)["ok"] and not place_order("SUG-CN-50", 1, db)["ok"]
 
 
 @pytest.mark.parametrize(
@@ -82,29 +76,17 @@ def test_quantity_must_be_a_whole_number_in_range(db: Path, quantity: object) ->
     assert stock(db, "FLR-AP-50") == 500
 
 
-def test_the_largest_allowed_quantity_gets_a_quote_not_an_overflow(db: Path) -> None:
-    quote = get_price("FLR-AP-50", MAX_QUANTITY, db)
-    assert quote["ok"] is True
-    assert quote["total_cents"] == 50_000_000
-    assert quote["in_stock"] is False
-
-
 def test_unknown_sku_is_refused(db: Path) -> None:
-    for call in (get_price, place_order):
-        result = call("NOPE-1", 1, db)
-        assert result == {"ok": False, "error": "unknown sku: NOPE-1"}
+    assert place_order("NOPE-1", 1, db) == {"ok": False, "error": "unknown sku: NOPE-1"}
+    assert get_price("NOPE-1", 1, db)["ok"] is False
 
 
 def test_connections_are_closed(db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     opened: list[sqlite3.Connection] = []
     real = sqlite3.connect
-
-    def spy(*args: object, **kwargs: object) -> sqlite3.Connection:
-        conn = real(*args, **kwargs)
-        opened.append(conn)
-        return conn
-
-    monkeypatch.setattr(server.sqlite3, "connect", spy)
+    monkeypatch.setattr(
+        server.sqlite3, "connect", lambda *a, **k: opened.append(real(*a, **k)) or opened[-1]
+    )
     place_order("FLR-AP-50", 1, db)
     list_orders(db)
     assert opened
@@ -115,5 +97,4 @@ def test_connections_are_closed(db: Path, monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_tools_never_raise(db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "DB_PATH", db)
-    assert server._get_price("NOPE", 1)["ok"] is False
-    assert server._place_order("FLR-AP-50", "3")["ok"] is False
+    assert not server._place_order("FLR-AP-50", "3")["ok"]

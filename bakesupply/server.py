@@ -1,8 +1,7 @@
 """Mock BakeSupply (Flour Co) MCP server. Run with: python -m bakesupply.server
 
-This is the only module that writes to bakesupply.db (besides bakesupply.seed).
-All money is integer cents. Like the bakery server, tools never raise: a refused call
-returns {"ok": false, "error": "..."}.
+Only this module writes to bakesupply.db (besides bakesupply.seed). Money is integer cents.
+Tools never raise: a refused call returns {"ok": false, "error": "..."}.
 """
 
 import sqlite3
@@ -25,7 +24,7 @@ Quantity = Annotated[Any, Field(description=f"Whole number of units, 1 to {MAX_Q
 
 
 class Refused(Exception):
-    """A request BakeSupply turns down; the message is shown to the caller."""
+    """A request BakeSupply turns down; the message goes to the caller."""
 
 
 @contextmanager
@@ -45,8 +44,8 @@ def _check_quantity(quantity: object) -> int:
 
 
 def _get_product(conn: sqlite3.Connection, sku: str) -> sqlite3.Row:
-    row = conn.execute("SELECT * FROM products WHERE sku = ?", (str(sku).strip().upper(),))
-    product = row.fetchone()
+    sql = "SELECT * FROM products WHERE sku = ?"
+    product = conn.execute(sql, (str(sku).strip().upper(),)).fetchone()
     if product is None:
         raise Refused(f"unknown sku: {sku}")
     return product

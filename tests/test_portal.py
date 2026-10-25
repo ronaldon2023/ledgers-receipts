@@ -149,12 +149,13 @@ def test_unknown_status_renders_as_unknown() -> None:
 @needs_node
 def test_data_is_escaped() -> None:
     d = copy.deepcopy(data("stopped"))
+    stopped = next(c for c in d["feed"]["attention"] if c["id"] == "att_stopped")
     d["feed"]["events"][0]["title"] = XSS
-    d["feed"]["attention"][0]["quote"]["text"] = XSS
+    stopped["quote"]["text"] = XSS
     d["feed"]["steps"][0]["quote"] = XSS
     d["receipt"]["checks"][0]["title"] = XSS
     d["policies"]["policies"][0]["title"] = XSS
-    d["feed"]["attention"][0]["actions"][1]["href"] = "javascript:alert(1)"
+    stopped["actions"][1]["href"] = "javascript:alert(1)"
     html = "".join(page(d, v) for v in ["dashboard", "order/PO-2041", "policies"])
     assert "<script" not in html
     assert "javascript:" not in html

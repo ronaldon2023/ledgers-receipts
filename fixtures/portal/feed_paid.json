@@ -122,36 +122,6 @@
   ],
   "attention": [
     {
-      "id": "att_mismatch",
-      "level": "mismatch",
-      "context": "Claude's summary",
-      "at": "2026-10-25T14:02:00-07:00",
-      "title": "Claude says Flour Co was paid. It wasn't.",
-      "pair": [
-        {
-          "label": "Claude said",
-          "text": "Paid Flour Co $800 for order PO-2041. All bills are up to date."
-        },
-        {
-          "label": "The records show",
-          "text": "No payment at 2:02 PM. BILL-07 is still open.",
-          "plain": true
-        }
-      ],
-      "next_step": "Go by the records. Don't tell Flour Co it's been paid.",
-      "actions": [
-        {
-          "label": "Got it",
-          "dismiss": true
-        }
-      ],
-      "steps": [
-        "s2:log:6",
-        "summary",
-        "chk_9"
-      ]
-    },
-    {
       "id": "att_order",
       "level": "approve",
       "context": "Order · asked by Claude",
@@ -181,6 +151,36 @@
         "s4:log:2",
         "s4:log:3",
         "chk_bs_3"
+      ]
+    },
+    {
+      "id": "att_mismatch",
+      "level": "mismatch",
+      "context": "Claude's summary",
+      "at": "2026-10-25T14:02:00-07:00",
+      "title": "Claude says Flour Co was paid. It wasn't.",
+      "pair": [
+        {
+          "label": "Claude said",
+          "text": "Paid Flour Co $800 for order PO-2041. All bills are up to date."
+        },
+        {
+          "label": "The records show",
+          "text": "No payment at 2:02 PM. BILL-07 is still open.",
+          "plain": true
+        }
+      ],
+      "next_step": "Go by the records. Don't tell Flour Co it's been paid.",
+      "actions": [
+        {
+          "label": "Got it",
+          "dismiss": true
+        }
+      ],
+      "steps": [
+        "s2:log:6",
+        "summary",
+        "chk_9"
       ]
     }
   ],

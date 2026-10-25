@@ -122,6 +122,38 @@
   ],
   "attention": [
     {
+      "id": "att_order",
+      "level": "approve",
+      "context": "Order · asked by Claude",
+      "at": "2026-10-25T13:42:00-07:00",
+      "title": "Order 100 kg of sugar from BakeSupply",
+      "amount_cents": 9500,
+      "subtitle": "Sugar is down to 12 kg, about 2 days left · goes over October's supplies budget by $87",
+      "short": "Sugar order, $95.00",
+      "actions": [
+        {
+          "label": "Approve with passkey",
+          "primary": true,
+          "dismiss": true,
+          "confirm": "Approve ordering 100 kg of sugar from BakeSupply for $95.00."
+        },
+        {
+          "label": "Decline",
+          "dismiss": true
+        },
+        {
+          "label": "Open order",
+          "href": "#order/BS-2"
+        }
+      ],
+      "steps": [
+        "s4:log:1",
+        "s4:log:2",
+        "s4:log:3",
+        "chk_bs_3"
+      ]
+    },
+    {
       "id": "att_stopped",
       "level": "stop",
       "context": "Payment",
@@ -181,38 +213,6 @@
         "s2:log:6",
         "summary",
         "chk_9"
-      ]
-    },
-    {
-      "id": "att_order",
-      "level": "approve",
-      "context": "Order · asked by Claude",
-      "at": "2026-10-25T13:42:00-07:00",
-      "title": "Order 100 kg of sugar from BakeSupply",
-      "amount_cents": 9500,
-      "subtitle": "Sugar is down to 12 kg, about 2 days left · goes over October's supplies budget by $87",
-      "short": "Sugar order, $95.00",
-      "actions": [
-        {
-          "label": "Approve with passkey",
-          "primary": true,
-          "dismiss": true,
-          "confirm": "Approve ordering 100 kg of sugar from BakeSupply for $95.00."
-        },
-        {
-          "label": "Decline",
-          "dismiss": true
-        },
-        {
-          "label": "Open order",
-          "href": "#order/BS-2"
-        }
-      ],
-      "steps": [
-        "s4:log:1",
-        "s4:log:2",
-        "s4:log:3",
-        "chk_bs_3"
       ]
     }
   ],

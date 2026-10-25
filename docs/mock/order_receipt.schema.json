@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "order_receipt.schema.json",
   "title": "Order receipt (draft v0)",
-  "description": "One receipt per order, written once when the order stops: payment sent, or stopped and waiting on the owner. A later attempt gets a new receipt that names this one in supersedes. Replaces PLAN.md contract 4 for order receipts. Money is integer cents; every value is already masked, and no free-text field may hold an 8+ digit run. Ids and addresses come from bakery.db (contract 1). Order field names follow schema.org Order where one fits.",
+  "description": "One receipt per order. Created when the order is submitted (the PostToolUse hook on create_order), updated at each step after that (approval, payment, read-back), and finalized when the session stops. Replaces PLAN.md contract 4 for order receipts. Money is integer cents; every value is already masked, and no free-text field may hold an 8+ digit run. Ids and addresses come from bakery.db (contract 1). Order field names follow schema.org Order where one fits.",
   "type": "object",
   "required": ["receipt_type", "receipt_id", "generated_at", "business", "verdict", "order", "bill", "payment",
                "lifecycle", "checks", "summary_check", "read", "left_business", "pii", "sessions", "evidence"],

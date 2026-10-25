@@ -40,9 +40,9 @@ someone else's half-finished code.
 - Tests in pytest under `tests/`. Tests that call the Claude API are marked
   `@pytest.mark.live` and skipped by default.
 - Money is always integer cents.
-- The MCP SDK is version 2: use `from mcp.server.mcpserver import MCPServer`, not
-  `FastMCP` (renamed in v2). Bakery tools appear as `mcp__bakery-local__<tool>`;
-  match them with `mcp__bakery.*` so any bakery server is covered.
+- The MCP SDK is pinned to version 1 (`mcp<2`): use `from mcp.server.fastmcp import FastMCP`.
+  Tools appear as `mcp__<server>__<tool>` (`mcp__bakery-local__pay_bill`,
+  `mcp__bakesupply__place_order`); hooks must cover both servers.
 - Presidio uses the small spaCy model `en_core_web_sm` (installed by
   `setup.sh`). Never load `en_core_web_lg`; it is a 400 MB download.
 - Only `bakery/server.py` writes to `bakery.db`. Everything else opens it

@@ -13,11 +13,11 @@ import sqlite3
 import sys
 from datetime import datetime
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.fastmcp import FastMCP
 
 from bakery import faults
 
-mcp = MCPServer("bakery-local")
+mcp = FastMCP("bakery-local")
 
 
 def _connect() -> sqlite3.Connection:
@@ -107,43 +107,6 @@ def list_orders(status: str = "all") -> dict:
                 )
             ]
     return {"ok": True, "orders": orders}
-
-
-@mcp.tool()
-def create_order(vendor_id: str, items: list[dict]) -> dict:
-    """Place a purchase order with a supplier.
-
-    items: [{"sku": "FLR-AP-50", "name": "All-purpose flour, 50 lb bag",
-             "quantity": 12, "unit_price_cents": 5000}]
-    """
-    if faults.errors("create_order"):
-        return {"ok": False, "error": "timeout"}
-    if not isinstance(items, list) or not items:
-        return {"ok": False, "error": "items must be a non-empty list"}
-    for item in items:
-        if not isinstance(item, dict) or _bad_text(sku=item.get("sku"), name=item.get("name")):
-            return {"ok": False, "error": "each item needs a sku and a name"}
-        for field in ("quantity", "unit_price_cents"):
-            value = item.get(field)
-            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-                return {"ok": False, "error": f"{field} must be a positive whole number"}
-    with _connect() as conn:
-        if not conn.execute("SELECT 1 FROM vendors WHERE id = ?", (vendor_id,)).fetchone():
-            return {"ok": False, "error": "no such vendor"}
-        (last,) = conn.execute(
-            "SELECT COALESCE(MAX(CAST(SUBSTR(id, 4) AS INTEGER)), 2000) FROM orders"
-        ).fetchone()
-        order_id = f"PO-{last + 1}"
-        total = sum(i["quantity"] * i["unit_price_cents"] for i in items)
-        conn.execute(
-            "INSERT INTO orders VALUES (?, ?, ?, 'placed', ?)",
-            (order_id, vendor_id, _now(), total),
-        )
-        conn.executemany(
-            "INSERT INTO order_items VALUES (?, ?, ?, ?, ?)",
-            [(order_id, i["sku"], i["name"], i["quantity"], i["unit_price_cents"]) for i in items],
-        )
-    return {"ok": True, "id": order_id, "total_cents": total}
 
 
 @mcp.tool()

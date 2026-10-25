@@ -1,5 +1,5 @@
 anthropic
-mcp>=2,<3
+mcp<2
 jsonschema
 presidio-analyzer
 presidio-anonymizer

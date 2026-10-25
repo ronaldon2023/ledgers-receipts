@@ -690,3 +690,16 @@ def test_sidebar_is_collapsible() -> None:
     assert side.count('<svg class="ico"') == 6  # five items plus the toggle
     folded = run([{"data": data("pending"), "ui": {"view": "dashboard", "navCollapsed": True}}])[0]
     assert 'aria-expanded="false" aria-label="Expand sidebar"' in folded["side"]
+
+
+@needs_node
+def test_by_order_headers_show_only_order_and_link() -> None:
+    html = page(data("pending"), "activities", feedView="order", **CHECKED)
+    assert 'class="chain"' not in html
+    for gone in [
+        "16 bags of flour · $800.00 · bill BILL-07",
+        "3 bags of cane sugar · $120.00",
+        "Other actions Claude tried during its runs",
+    ]:
+        assert gone not in html
+    assert '<b>Order PO-2041 · Flour Co</b></div><a href="#order/PO-2041"' in html

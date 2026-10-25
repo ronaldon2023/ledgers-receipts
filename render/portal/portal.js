@@ -201,18 +201,12 @@ Portal.groups = function (feed, byOrder) {
   var esc = Portal.esc, orders = feed.orders || [], known = {};
   var out = orders.map(function (o) {
     known[o.order_number] = true;
-    var chain = (o.progress || []).map(function (p) {
-      return p.level === "done" ? '<li><span class="ic-ok">✓</span>' + esc(p.label) + '</li>'
-        : '<li><span class="b ' + Portal.status(Portal.LEVEL, p.level)[1] + '">' + esc(p.label) + '</span></li>';
-    }).join("");
-    var bill = o.bill_id ? ' · bill ' + esc(o.bill_id) + ' due ' + esc(Portal.day(o.bill_due)) : '';
     return { items: events.filter(function (e) { return e.order === o.order_number; }),
-      head: '<div class="ordhead"><div class="oh-l"><b>Order ' + esc(o.order_number) + ' · ' + esc(o.seller) + '</b><span class="muted small">' +
-        esc(o.summary) + ' · ' + esc(Portal.money(o.total_cents)) + bill + '</span></div>' +
-        '<ol class="chain" aria-label="Order progress">' + chain + '</ol><a href="' + esc(Portal.href("#order/" + o.order_number)) + '" class="small">Order receipt</a></div>' };
+      head: '<div class="ordhead"><div class="oh-l"><b>Order ' + esc(o.order_number) + ' · ' + esc(o.seller) + '</b></div>' +
+        '<a href="' + esc(Portal.href("#order/" + o.order_number)) + '" class="small">Order receipt</a></div>' };
   });
   out.push({ items: events.filter(function (e) { return !known[e.order]; }),
-    head: '<div class="ordhead"><div class="oh-l"><b>Not tied to an order</b><span class="muted small">Other actions Claude tried during its runs</span></div></div>' });
+    head: '<div class="ordhead"><div class="oh-l"><b>Not tied to an order</b></div></div>' });
   return out;
 };
 Portal.feedHtml = function (feed, ui) {

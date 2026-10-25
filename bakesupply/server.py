@@ -1,10 +1,11 @@
-"""Mock BakeSupply (Flour Co) MCP server. Run with: python -m bakesupply.server
+"""Mock BakeSupply (Flour Co) MCP server. Run with: python -m bakesupply.server [--http [--port N]]
 
 Only this module writes to bakesupply.db (besides bakesupply.seed). Money is integer cents.
 Tools never raise: a refused call returns {"ok": false, "error": "..."}.
 """
 
 import sqlite3
+import sys
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -132,5 +133,13 @@ def _list_orders() -> list[dict[str, Any]]:
     return list_orders()
 
 
+def main() -> None:
+    """stdio by default. --http serves streamable HTTP for a gateway in front of it; --port N
+    picks the port (default 8000, the same as the bakery server, so give one of them a port)."""
+    if "--port" in sys.argv:
+        mcp.settings.port = int(sys.argv[sys.argv.index("--port") + 1])
+    mcp.run("streamable-http" if "--http" in sys.argv else "stdio")
+
+
 if __name__ == "__main__":
-    mcp.run()
+    main()

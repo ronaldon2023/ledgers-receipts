@@ -28,10 +28,11 @@
   color-scheme: light; /* light only, even when the device is set to dark */
 }
 * { box-sizing: border-box; }
-body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
 a { color: var(--brown); }
 a:hover { color: var(--brown-hover); }
 :focus-visible { outline: 2px solid var(--brown); outline-offset: 2px; }
+.side :focus-visible { outline-color: var(--side-fg); }
 .shell { display: flex; flex-wrap: wrap; min-height: 100vh; }
 
 /* Sidebar */

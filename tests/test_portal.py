@@ -424,7 +424,7 @@ def test_approving_the_restock_shows_every_bakesupply_tool() -> None:
     assert positions == sorted(positions)
     acts = page(data("pending"), "activities", ran=ran, dismissed=ran)
     assert "Ordered 3 bags of cane sugar from Flour Co, $120.00" in acts
-    assert '<span class="b b-mute">Approved</span>' in acts
+    assert '<span class="b b-mute">Answered</span>' in acts
 
 
 @needs_node
@@ -503,3 +503,42 @@ def test_bill_card_has_no_subtitle() -> None:
     card = card[: card.index("</article>")]
     assert 'class="muted"' not in card
     assert "16 bags of flour · due" not in card
+
+
+@needs_node
+def test_paid_state_summary_card_is_past_tense() -> None:
+    html = page(data("paid"))
+    assert "Claude says Flour Co was paid. It wasn&#39;t." not in html
+    assert "said Flour Co was paid before it was" in html
+    assert "Don&#39;t tell Flour Co" not in html
+
+
+@needs_node
+def test_decline_asks_before_acting() -> None:
+    html = page(data("pending"), confirming={"card": "att_approve", "action": 1})
+    card = html[html.index("Pay Flour Co $800.00 for bill BILL-07") :]
+    card = card[: card.index("</article>")]
+    assert "<strong>Decline this payment?</strong>" in card
+    assert 'data-act="passkey" data-card="att_approve">Decline</button>' in card
+
+
+@needs_node
+def test_needs_action_matches_open_cards() -> None:
+    html = page(data("stopped"), "activities", filter="action")
+    for title in [
+        "Payment of $800.00 to Flour Co stopped",
+        "Claude&#39;s summary said Flour Co was paid",
+    ]:
+        assert title in html
+    assert "Email to billing-help@outside.example stopped" not in html
+    done = page(data("stopped"), "activities", filter="action", dismissed={"att_mismatch": True})
+    assert "Claude&#39;s summary said Flour Co was paid" not in done
+
+
+@needs_node
+def test_order_page_details_from_review() -> None:
+    proposed = page(data("pending"), "order/PO-2042", **CHECKED)
+    assert "· proposed Sun 25 Oct" in proposed and "· placed" not in proposed
+    receipt = page(data("stopped"), "order/PO-2041", **{"from": "activities"})
+    assert '<details class="steps"><summary>Steps Claude took on this order (' in receipt
+    assert '<a href="#activities" aria-current="page">' in receipt

@@ -75,6 +75,7 @@
           "total_cents": 12000
         }
       ],
+      "verb": "proposed",
       "bill_id": null,
       "bill_due": null,
       "receipt_note": "Not placed yet. Claude orders it only after you approve with your passkey, and its receipt starts when the order is submitted.",
@@ -89,6 +90,7 @@
         }
       ],
       "when_approved": {
+        "verb": "placed",
         "progress": [
           {
             "label": "Ordered",
@@ -179,7 +181,10 @@
         },
         {
           "label": "Decline",
-          "dismiss": true
+          "dismiss": true,
+          "confirm_title": "Decline this order?",
+          "confirm_button": "Decline",
+          "confirm": "Claude won't order the cane sugar."
         },
         {
           "label": "Open order",
@@ -225,7 +230,8 @@
         "s2:log:2",
         "chk_4",
         "s2:log:4"
-      ]
+      ],
+      "card": "att_approve"
     },
     {
       "id": "ev_email",
@@ -288,6 +294,7 @@
         "s3:log:5",
         "s3:log:6"
       ],
+      "card": "att_order",
       "requires": "att_inventory",
       "resolves": "att_order",
       "when_approved": {

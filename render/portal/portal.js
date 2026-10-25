@@ -55,7 +55,7 @@ Portal.RESULT = {
 // Feed and card levels: [label, badge]
 Portal.LEVEL = {
   approve: ["Needs approval", "b-ask"], approved: ["You approved", "b-you"], declined: ["You declined", "b-mute"],
-  resolved: ["Approved", "b-mute"], done: ["Done", "b-ok"], paid: ["Paid", "b-ok"], flag: ["Flag", "b-flag"],
+  resolved: ["Answered", "b-mute"], done: ["Done", "b-ok"], paid: ["Paid", "b-ok"], flag: ["Flag", "b-flag"],
   stop: ["Stopped", "b-stop"], mismatch: ["Doesn't match", "b-odd"], failed: ["Failed", "b-stop"],
   untrusted: ["Untrusted", "b-stop"], info: ["Info", "b-mute"], task: ["To do", "b-you"], _unknown: ["Unknown", "b-mute"]
 };
@@ -110,9 +110,11 @@ Portal.quote = function (q) {
   var t = q.plain ? Portal.esc(q.text) : '"' + Portal.esc(q.text) + '"';
   return '<div class="quote"><b>' + Portal.esc(q.label) + '</b>' + t + '</div>';
 };
-Portal.passkey = function (card, text) {
-  return '<div class="passkey" role="group" aria-label="Confirm with passkey"><strong>Confirm with your passkey</strong><span>' + Portal.esc(text) + '</span>' +
-    '<div class="actions"><button type="button" class="btn primary" data-act="passkey" data-card="' + Portal.esc(card) + '">Use passkey</button>' +
+// Inline confirm panel: approvals ask for the passkey; other actions (Decline) name their own button.
+Portal.passkey = function (card, a) {
+  var esc = Portal.esc, title = a.confirm_title || "Confirm with your passkey";
+  return '<div class="passkey" role="group" aria-label="' + esc(title) + '"><strong>' + esc(title) + '</strong><span>' + esc(a.confirm) + '</span>' +
+    '<div class="actions"><button type="button" class="btn primary" data-act="passkey" data-card="' + esc(card) + '">' + esc(a.confirm_button || "Use passkey") + '</button>' +
     '<button type="button" class="btn ghost" data-act="cancel">Cancel</button></div></div>';
 };
 Portal.card = function (feed, c, ui) {
@@ -132,7 +134,7 @@ Portal.card = function (feed, c, ui) {
   var actions = c.actions || [], wait = ui.confirming && ui.confirming.card === c.id ? actions[ui.confirming.action] : null;
   var run = ui.running && ui.running.card === c.id ? ui.running : null;
   if (run) return h + Portal.running(actions[run.action], run.step) + '</article>';
-  h += wait ? Portal.passkey(c.id, wait.confirm) : '<div class="actions">' + actions.map(function (a, i) {
+  h += wait ? Portal.passkey(c.id, wait) : '<div class="actions">' + actions.map(function (a, i) {
     if (a.href) return '<a class="btn ghost linkbtn" href="' + esc(Portal.href(a.href)) + '">' + esc(a.label) + '</a>';
     return '<button type="button" class="btn' + (a.primary ? ' primary' : '') + '" data-card="' + esc(c.id) + '" data-action="' + i + '">' + esc(a.label) + '</button>';
   }).join("") + '</div>';
@@ -173,8 +175,9 @@ Portal.visible = function (feed, ui) {
 
 /* ---------- AI agent activities ---------- */
 Portal.FILTERS = [["all", "All"], ["action", "Needs action"], ["orders", "Orders"], ["payments", "Payments"], ["stopped", "Stopped and flags"]];
-Portal.keep = function (filter, it) {
-  if (filter === "action") return ["approve", "stop", "mismatch", "failed"].indexOf(it.level) >= 0;
+// "Needs action" means the same as the dashboard: rows whose card is still open in Needs your attention.
+Portal.keep = function (filter, it, open) {
+  if (filter === "action") return !!it.card && !!(open || {})[it.card];
   if (filter === "orders") return it.kind === "Order" || it.kind === "Bill";
   if (filter === "payments") return ["Payment", "Bill", "Inbox", "Summary"].indexOf(it.kind) >= 0;
   if (filter === "stopped") return ["stop", "mismatch", "flag", "failed"].indexOf(it.level) >= 0;
@@ -222,9 +225,10 @@ Portal.feedHtml = function (feed, ui) {
     '<button type="button" class="seg" data-feedview="order" aria-pressed="' + byOrd + '">By order</button>' +
     '<button type="button" class="seg" data-feedview="time" aria-pressed="' + !byOrd + '">By time</button></div>' +
     '</div><div class="feed">';
-  var any = false;
+  var any = false, open = {};
+  Portal.attention(feed, ui).forEach(function (c) { open[c.id] = true; });
   Portal.groups(feed, byOrd).forEach(function (g) {
-    var items = g.items.filter(function (it) { return Portal.keep(ui.filter, it); });
+    var items = g.items.filter(function (it) { return Portal.keep(ui.filter, it, open); });
     if (!items.length) return;
     any = true;
     h += g.head;
@@ -304,12 +308,14 @@ Portal.order = function (d, num) {
   var o = (f.orders || []).filter(function (x) { return x.order_number === num; })[0];
   if (!o && !r) return Portal.header("Order not found", num) + '<div class="card"><p><a href="#dashboard">Back to the dashboard</a></p></div>';
   var seller = r ? r.order.seller : { name: o.seller, email: o.seller_email }, placed = r ? r.order.order_date : o.placed_at;
-  var h = '<a class="back" href="#dashboard">← Back to dashboard</a>' + Portal.header("Order receipt · " + num, seller.name + " · placed " + Portal.day(placed) + ", " + Portal.time(placed) + (seller.email ? " · " + seller.email : ""));
+  var verb = r ? "placed" : o.verb || "placed";
+  var h = '<a class="back" href="#dashboard">← Back to dashboard</a>' + Portal.header("Order receipt · " + num, seller.name + " · " + verb + " " + Portal.day(placed) + ", " + Portal.time(placed) + (seller.email ? " · " + seller.email : ""));
   h += r ? Portal.receiptBody(r) : '<section class="card"><p class="note">' + esc(o.receipt_note || "No receipt yet. The verifier writes one when the order stops: its bill is paid, or the payment is stopped.") + '</p></section>' +
     '<div class="two">' + Portal.itemsTable(o.items, o.total_cents) + '</div>';
   var steps = (f.steps || []).filter(function (s) { return s.order === num; });
-  return h + '<section class="card"><div class="sh"><h2>Steps Claude took on this order</h2><span>' + steps.length + ' steps · oldest first</span></div>' +
-    Portal.legend + Portal.trail(steps, true) + '</section>';
+  // Collapsed like the dashboard cards, so the receipt stays short on a phone.
+  return h + '<section class="card"><details class="steps"><summary>Steps Claude took on this order (' + steps.length + ')</summary>' +
+    Portal.legend + Portal.trail(steps, true) + '</details></section>';
 };
 Portal.POLICY_GROUPS = [
   ["guard", "Guards"], ["order", "Order policy"], ["payment", "Payment policy"], ["budget", "Budget policy"]
@@ -400,7 +406,8 @@ Portal.page = function (d, ui) {
   var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d)
     : view === "activities" ? Portal.activities(d, ui) : Portal.dashboard(d, ui);
   if (broken) main = '<p class="banner" role="alert">Untrusted: the activity log failed its tamper check. Don\'t rely on anything here until it\'s fixed.</p>' + main;
-  var cur = view === "policies" || view === "activities" ? view : "dashboard";
+  // An order page keeps the page you came from highlighted.
+  var cur = view === "policies" || view === "activities" ? view : view.indexOf("order/") === 0 && ui.from ? ui.from : "dashboard";
   var side = brand +
     [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
       return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
@@ -422,20 +429,31 @@ if (typeof document !== "undefined") (function () {
     if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; }
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
-  if (asked && STATES.indexOf(asked[1]) >= 0) { ui.state = asked[1]; ui.onboarded = true; }
+  // ?state= starts that demo state fresh, so a rehearsal's clicks don't leak into the next run.
+  if (asked && STATES.indexOf(asked[1]) >= 0) { ui.state = asked[1]; ui.onboarded = true; ui.dismissed = {}; ui.ran = {}; }
+  var resume = /[?&]demo=(\w+)/.exec(location.search); // written by go(): keeps the state and the clicks
+  if (resume && STATES.indexOf(resume[1]) >= 0) ui.state = resume[1];
   if (/[?&]onboarding=1/.test(location.search)) ui.onboarded = false; // ?onboarding=1 runs setup again
   function view() {
     var h = (location.hash || "").slice(1);
     if (!ui.onboarded) return "onboarding";
     return h === "policies" || h === "activities" || h.indexOf("order/") === 0 ? h : "dashboard";
   }
+  var TITLES = { dashboard: "Dashboard", activities: "Activities", policies: "Policies", onboarding: "Set up" };
   function render() {
     if (!data) return;
     ui.view = view();
+    if (ui.view === "dashboard" || ui.view === "activities") ui.from = ui.view;
     var out = Portal.page(data, ui);
     side.innerHTML = out.side;
     side.hidden = !out.side;
     app.innerHTML = out.main;
+    document.title = (TITLES[ui.view] || "Order " + ui.view.slice(6)) + " · Ledger";
+  }
+  function confirmOpen(p) {
+    set(p);
+    var b = app.querySelector('[data-act="passkey"]');
+    if (b) b.focus();
   }
   function set(p) {
     for (var k in p) ui[k] = p[k];
@@ -463,7 +481,12 @@ if (typeof document !== "undefined") (function () {
       app.innerHTML = '<div class="card"><p>Could not load the portal data: ' + Portal.esc(e.message) + '</p></div>';
     });
   }
-  function go(state) { last = ""; set({ state: state, confirming: null }); load(); }
+  function go(state) {
+    last = "";
+    history.replaceState(null, "", "?demo=" + state + location.hash); // a reload resumes this state
+    set({ state: state, confirming: null });
+    load();
+  }
   // Demo run: step through the action's progress list, then reveal what the run produced.
   var timer = null;
   function startRun(card, i) {
@@ -525,11 +548,14 @@ if (typeof document !== "undefined") (function () {
     if (act === "cancel") return set({ confirming: null });
     if (!card) return;
     var i = act === "passkey" && ui.confirming ? ui.confirming.action : +t.getAttribute("data-action"), a = card.actions[i];
-    if (a.confirm && act !== "passkey") return set({ confirming: { card: card.id, action: i } });
+    if (a.confirm && act !== "passkey") return confirmOpen({ confirming: { card: card.id, action: i } });
     if (a.progress) return startRun(card, i);
     if (a.run) ui.ran[card.id] = true; // e.g. Start check: reveals what that run produced
     if (a.dismiss || a.run) { ui.dismissed[card.id] = true; set({ confirming: null }); }
     else if (a.next) go(a.next);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && ui.confirming) set({ confirming: null });
   });
   window.addEventListener("hashchange", function () { render(); window.scrollTo(0, 0); });
   load();

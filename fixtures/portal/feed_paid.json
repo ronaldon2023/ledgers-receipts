@@ -75,6 +75,7 @@
           "total_cents": 12000
         }
       ],
+      "verb": "proposed",
       "bill_id": null,
       "bill_due": null,
       "receipt_note": "Not placed yet. Claude orders it only after you approve with your passkey, and its receipt starts when the order is submitted.",
@@ -89,6 +90,7 @@
         }
       ],
       "when_approved": {
+        "verb": "placed",
         "progress": [
           {
             "label": "Ordered",
@@ -179,7 +181,10 @@
         },
         {
           "label": "Decline",
-          "dismiss": true
+          "dismiss": true,
+          "confirm_title": "Decline this order?",
+          "confirm_button": "Decline",
+          "confirm": "Claude won't order the cane sugar."
         },
         {
           "label": "Open order",
@@ -200,19 +205,19 @@
       "level": "mismatch",
       "context": "Claude's summary",
       "at": "2026-10-25T14:02:00-07:00",
-      "title": "Claude says Flour Co was paid. It wasn't.",
+      "title": "Claude's summary said Flour Co was paid before it was",
       "pair": [
         {
-          "label": "Claude said",
+          "label": "Claude said at 2:02 PM",
           "text": "Paid Flour Co $800 for order PO-2041. All bills are up to date."
         },
         {
           "label": "The records show",
-          "text": "No payment at 2:02 PM. BILL-07 is still open.",
-          "plain": true
+          "plain": true,
+          "text": "No payment at 2:02 PM. You paid BILL-07 to the account on file at 2:05 PM."
         }
       ],
-      "next_step": "Go by the records. Don't tell Flour Co it's been paid.",
+      "next_step": "Nothing to do now. The receipt keeps a record of the wrong summary.",
       "actions": [
         {
           "label": "Got it",
@@ -255,7 +260,8 @@
         "s2:log:6",
         "summary",
         "chk_8"
-      ]
+      ],
+      "card": "att_mismatch"
     },
     {
       "id": "ev_stop",
@@ -270,7 +276,8 @@
         "chk_5",
         "s2:log:5",
         "s2:log:6"
-      ]
+      ],
+      "card": "att_stopped"
     },
     {
       "id": "ev_approved",
@@ -300,7 +307,8 @@
         "s2:log:2",
         "chk_4",
         "s2:log:4"
-      ]
+      ],
+      "card": "att_approve"
     },
     {
       "id": "ev_email",
@@ -363,6 +371,7 @@
         "s3:log:5",
         "s3:log:6"
       ],
+      "card": "att_order",
       "requires": "att_inventory",
       "resolves": "att_order",
       "when_approved": {

@@ -1,3 +1,4 @@
+import json
 import re
 import sqlite3
 import subprocess
@@ -7,7 +8,7 @@ from contextlib import closing
 import pytest
 
 from bakery.seed import seed
-from checks.gate import PAY_CHECKS, evaluate
+from checks.gate import PAY_CHECKS, CheckResult, allowed, evaluate
 from checks.source import SqliteSource
 
 CLEAN = {"bill_id": "BILL-07", "amount_cents": 80000, "to_account": "000123454471"}
@@ -54,10 +55,14 @@ CASES = [
             {"to_account": value},
             "C4",
         )
-        for i, (blank, value) in enumerate([("''", ""), ("' '", " "), ("123456", 123456)])
+        for i, (blank, value) in enumerate([("''", ""), ("' '", " "), ("' - '", "-")])
     ],
     ("bill_asks_new_account", ["UPDATE bills SET pay_to_account = '000098763210'"], {}, "C4"),
     ("amount_drift", [], {"amount_cents": 90000}, "C5"),
+    *[
+        (f"amount_not_cents_{i}", [], {"amount_cents": v}, "C5")
+        for i, v in enumerate(["80000", 80000.0, True])
+    ],
     ("bill_not_order", ["UPDATE bills SET amount_cents = 88000"], {"amount_cents": 88000}, "C5"),
     ("orphan_bill", ["UPDATE bills SET order_id = NULL"], {}, "C6"),
     (
@@ -131,6 +136,20 @@ def test_orphan_bill_leaves_amount_unknown(db):
     assert run(db)["C5"] == "unknown"
 
 
+@pytest.mark.parametrize("to_account", ["0001 2345 4471", "0001-2345-4471", " 000123454471 "])
+def test_account_formatting_is_ignored(db, to_account):
+    assert run(db, {**CLEAN, "to_account": to_account})["C4"] == "pass"
+
+
+# Only ASCII spaces and dashes are formatting; anything else could be stored differently
+@pytest.mark.parametrize(
+    "to_account",
+    ["000123454471\n", "0001\t23454471", "0001 23454471", "0001—2345-4471", "٠٠٠١٢٣٤٥٤٤٧١"],
+)
+def test_other_separators_and_digits_block(db, to_account):
+    assert blocked(run(db, {**CLEAN, "to_account": to_account})) == {"C4"}
+
+
 def test_unknown_bill_blocks_on_c6(db):
     results = run(db, {**CLEAN, "bill_id": "BILL-99"})
     assert blocked(results) == {"C6"}
@@ -144,12 +163,14 @@ def test_unknown_action_or_missing_argument_blocks(db, action, args):
     assert run(db, args, action) == {"C0": "block"}
 
 
-def test_crashing_source_blocks():
+def test_crashing_source_blocks_without_echoing_its_message():
     class Broken:
         def bill(self, bill_id):
-            raise sqlite3.OperationalError("disk I/O error")
+            raise sqlite3.OperationalError(f"no row for account {CLEAN['to_account']}")
 
-    assert [(r.id, r.status) for r in evaluate("pay_bill", CLEAN, Broken())] == [("C0", "block")]
+    results = evaluate("pay_bill", CLEAN, Broken())
+    assert [(r.id, r.status) for r in results] == [("C0", "block")]
+    assert not re.search(r"\d{8,}", results[0].title)
 
 
 def test_crashing_check_blocks_under_its_id(db):
@@ -181,22 +202,31 @@ def test_results_hold_no_full_account_number(db, to_account):
     assert {r.id for r in results if r.status == "block"} == {"C4"}
 
 
-def test_package_exports_evaluate():
+@pytest.mark.parametrize(
+    "statuses,expected",
+    [(["pass", "unknown", "ask"], True), (["pass", "block"], False), ([], True)],
+)
+def test_allowed_stops_only_on_block(statuses, expected):
+    assert allowed([CheckResult(f"C{i}", s, "") for i, s in enumerate(statuses)]) is expected
+
+
+def test_package_exports_evaluate_and_allowed():
     import checks
 
-    assert checks.evaluate is evaluate
+    assert (checks.evaluate, checks.allowed) == (evaluate, allowed)
 
 
-def test_cli_exit_code(db):
-    cmd = [sys.executable, "-m", "checks", "pay_bill", "--db", str(db)]
-    clean = subprocess.run(
-        [*cmd, '{"bill_id": "BILL-07", "amount_cents": 80000, "to_account": "000123454471"}'],
-        check=False,
-    )
-    fraud = subprocess.run(
-        [*cmd, '{"bill_id": "BILL-07", "amount_cents": 80000, "to_account": "9876543210"}'],
-        check=False,
-        capture_output=True,
-    )
-    assert (clean.returncode, fraud.returncode) == (0, 1)
-    assert b"C4" in fraud.stdout
+def test_cli_exit_codes(db, tmp_path):
+    def cli(args: str, path) -> subprocess.CompletedProcess:
+        cmd = [sys.executable, "-m", "checks", "pay_bill", args, "--db", str(path)]
+        return subprocess.run(cmd, check=False, capture_output=True, text=True)
+
+    fraud = json.dumps({**CLEAN, "to_account": "9876543210"})
+    codes = [
+        cli(json.dumps(CLEAN), db).returncode,
+        cli(fraud, db).returncode,
+        cli("{not json", db).returncode,
+        cli(json.dumps(CLEAN), tmp_path / "absent.db").returncode,
+    ]
+    assert codes == [0, 1, 2, 2]
+    assert "C4" in cli(fraud, db).stdout

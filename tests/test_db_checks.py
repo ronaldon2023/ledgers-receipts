@@ -70,6 +70,18 @@ CASES = [
         "C7",
     ),
     ("bill_marked_paid", ["UPDATE bills SET status = 'paid'"], {}, "C7"),
+    *[
+        (f"malformed_sender_{i}", [f"UPDATE bills SET from_addr = '{addr}'"], {}, "C8")
+        for i, addr in enumerate(
+            [
+                "a@evil@flourco.example",
+                "Flour Co <billing@flourco.example>",
+                "@flourco.example",
+                "flourco.example",
+                "billing@flourco.example, x@evil.example",
+            ]
+        )
+    ],
     (
         "no_domains",
         ["UPDATE bills SET from_addr = ''", "UPDATE vendors SET email = ''"],

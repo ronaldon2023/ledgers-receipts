@@ -8,6 +8,7 @@ docs/order-lifecycle-plan.md section 5; C1 to C3 need the owner's policy (issue 
 Usage: python -m checks pay_bill '{"bill_id": "BILL-07", ...}' [--db bakery.db]   (see __main__)
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -29,8 +30,12 @@ def _last4(account: object) -> str:
     return f"••{account[-4:]}" if account else "none"
 
 
-def _domain(addr: str | None) -> str:
-    return (addr or "").rpartition("@")[2].lower()
+def _domain(addr: object) -> str:
+    """The domain of a bare address, or "" for anything else, which C8 then blocks."""
+    if not isinstance(addr, str) or addr.count("@") != 1 or re.search(r"[\s<>,;\"]", addr):
+        return ""
+    local, domain = addr.split("@")
+    return domain.lower().rstrip(".") if local else ""
 
 
 def _money(cents: int) -> str:

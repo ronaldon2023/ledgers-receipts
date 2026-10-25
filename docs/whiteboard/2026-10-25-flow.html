@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Receipts Whiteboard Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Kalam:wght@400;700&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Layout: whiteboard redrawn as one left-to-right flow, then a three-column "rules" band, then assumptions + build list. Stacks to one column on phones. */
+:root{
+  --board:#f7f8f6; --card:#ffffff; --ink:#1c2330; --muted:#5f6878; --rule:#d6dbe1;
+  --marker:#2b5fb8; --marker-bg:#e8eefa; --guard:#b3401f; --guard-bg:#fbece6; --hook:#2f7a52; --hook-bg:#e5f3ea;
+  --display:"Kalam","Comic Sans MS","Chalkboard SE",cursive;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --board:#13171d; --card:#1b2028; --ink:#e6e9ee; --muted:#9ba4b3; --rule:#2d343e;
+  --marker:#86aef0; --marker-bg:#1c2a42; --guard:#f0947a; --guard-bg:#3a1f17; --hook:#74c99a; --hook-bg:#163024; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --board:#13171d; --card:#1b2028; --ink:#e6e9ee; --muted:#9ba4b3; --rule:#2d343e;
+  --marker:#86aef0; --marker-bg:#1c2a42; --guard:#f0947a; --guard-bg:#3a1f17; --hook:#74c99a; --hook-bg:#163024; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--board);color:var(--ink);font:15px/1.5 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:40px}
+header{display:grid;gap:6px}
+.eyebrow{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(30px,5vw,44px)/1.1 var(--display);margin:0;text-wrap:balance}
+h2{font:700 24px/1.2 var(--display);margin:0 0 14px;text-wrap:balance}
+h3{font:600 15px/1.3 var(--sans);margin:0}
+p{margin:0;max-width:65ch}
+.lede{color:var(--muted)}
+.scribble{font-family:var(--display);color:var(--marker);font-size:17px;line-height:1.25}
+
+/* Flow */
+.flow{display:flex;align-items:stretch;gap:0}
+.arrow{flex:0 0 44px;display:grid;place-items:center;color:var(--muted)}
+.arrow svg{width:28px;height:28px}
+.stage{flex:1 1 0;min-width:0;background:var(--card);border:1.5px solid var(--rule);border-radius:10px;padding:16px;display:grid;gap:12px;align-content:start}
+.stage.demo{flex:1.5 1 0;border:2px dashed var(--marker);background:var(--marker-bg)}
+.stage-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tag{font:600 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;padding:5px 8px;border-radius:999px;background:var(--marker);color:var(--card)}
+.step{display:flex;gap:10px;align-items:flex-start}
+.dot{flex:0 0 auto;font:600 11px/1 var(--mono);border:1.5px solid var(--ink);border-radius:4px;padding:4px 6px;margin-top:1px}
+.dot.db{border-color:var(--marker);color:var(--marker)}
+.note{border-left:3px solid var(--rule);padding:2px 0 2px 10px;color:var(--muted);font-size:14px}
+.sub{display:grid;gap:8px}
+.chip{background:var(--card);border:1.5px solid var(--rule);border-radius:8px;padding:10px 12px;display:grid;gap:2px}
+.chip small{color:var(--muted);font-size:13px}
+.chip.receipt{border-color:var(--hook);background:var(--hook-bg)}
+.down{display:grid;place-items:center;color:var(--muted);height:16px}
+.down svg{width:16px;height:16px}
+.hookline{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--hook);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;border:2px solid var(--rule);display:inline-block}
+.sw.demo{border:2px dashed var(--marker);background:var(--marker-bg)}
+.sw.db{border-color:var(--marker)}
+.sw.rec{border-color:var(--hook);background:var(--hook-bg)}
+
+/* Under-flow notes */
+.outcomes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.outcomes > div{border-top:2px solid var(--ink);padding-top:10px;display:grid;gap:4px}
+
+/* Rules band */
+.rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.col{background:var(--card);border:1.5px solid var(--rule);border-radius:10px;padding:16px;display:grid;gap:10px;align-content:start}
+.col.hooks{border-color:var(--hook)}
+.col h3{font:700 20px/1.2 var(--display)}
+.col .kicker{font-size:13px;color:var(--muted);margin-top:-6px}
+ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+li{display:flex;gap:8px;align-items:baseline}
+li::before{content:"";flex:0 0 6px;height:6px;border-radius:50%;background:var(--muted);transform:translateY(-2px)}
+li ul{margin-top:6px;padding-left:4px}
+li.nest{display:block}
+li.nest::before{display:none}
+.guard{color:var(--guard);font-weight:600}
+.pill{font:600 11px/1 var(--sans);padding:4px 7px;border-radius:999px;background:var(--guard-bg);color:var(--guard);white-space:nowrap}
+
+/* Bottom: assumptions + build */
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px}
+dl{margin:0;display:grid;gap:10px}
+.row{display:grid;grid-template-columns:minmax(110px,40%) minmax(0,1fr);gap:12px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+dt{font-weight:600}
+dd{margin:0;color:var(--ink)}
+dd small{display:block;color:var(--muted);font-size:13px}
+.ai{font:600 11px/1 var(--sans);padding:4px 7px;border-radius:999px;background:var(--hook-bg);color:var(--hook);margin-left:4px;white-space:nowrap}
+
+footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);padding-top:14px;display:grid;gap:4px}
+
+@media (max-width:860px){
+  .flow{flex-direction:column}
+  .arrow{flex-basis:36px}
+  .arrow svg{transform:rotate(90deg)}
+  .rules,.two,.outcomes{grid-template-columns:minmax(0,1fr)}
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Receipts · Planning whiteboard · 25 Oct 2026</span>
+    <h1>How an order flows, and where we check it</h1>
+    <p class="lede">A clean redraw of the team's whiteboard. Wording follows the board; anything hard to read is marked with a question mark.</p>
+  </header>
+
+  <section aria-labelledby="flow-h">
+    <h2 id="flow-h">The flow</h2>
+    <div class="flow">
+      <div class="stage demo">
+        <div class="stage-head"><h3>1 · Order lifecycle</h3><span class="tag">Demo stage 1</span></div>
+        <div class="step"><span class="dot db">DB</span><p>An <b>order</b> is created and saved to the database.</p></div>
+        <div class="note">
+          <span class="scribble">Who authorized it? What permissions?</span><br>
+          Was it the <b>agent</b> or a <b>human</b>?
+        </div>
+        <div class="step"><span class="dot">🔑</span><p><b>Passkey / hash</b> to prove who authorized it.</p></div>
+      </div>
+
+      <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+
+      <div class="stage">
+        <div class="stage-head"><h3>2 · Black box</h3></div>
+        <p>Outside our system. We don't see inside it.</p>
+        <div class="step"><span class="dot">↳</span><p>The <b>supplier fulfills</b> the order</p></div>
+        <div class="step"><span class="dot">↳</span><p>and <b>sends an invoice</b>, which lands in the database.</p></div>
+      </div>
+
+      <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+
+      <div class="stage demo">
+        <div class="stage-head"><h3>3 · Payment</h3><span class="tag">Demo stage 1</span></div>
+        <div class="sub">
+          <div class="chip"><b>Payment-ready trigger</b><small>by time, or by request</small></div>
+          <div class="down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v15M6 13l6 6 6-6"/></svg></div>
+          <div class="chip"><b><span class="dot db" style="margin-right:6px">DB</span>Payment + order data</b><small>pulled together for checking</small></div>
+          <div class="down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v15M6 13l6 6 6-6"/></svg></div>
+          <div class="chip"><b>Validate</b><small>does the payment match the order and invoice?</small></div>
+          <div class="down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v15M6 13l6 6 6-6"/></svg></div>
+          <div class="chip receipt"><b>Final order receipt</b><small>the page the owner reads</small></div>
+          <div class="hookline">⤷ made by a hook, not by the AI</div>
+        </div>
+      </div>
+    </div>
+    <div class="legend" style="margin-top:14px">
+      <span><i class="sw demo"></i>Part of demo stage 1</span>
+      <span><i class="sw db"></i>Saved to the database</span>
+      <span><i class="sw rec"></i>Receipt output</span>
+    </div>
+  </section>
+
+  <section class="outcomes" aria-label="Notes under the flow">
+    <div>
+      <h3>Outcome</h3>
+      <p>A <b>receipt</b> is saved to the database, carrying the order info.</p>
+    </div>
+    <div>
+      <h3>Checks and guards</h3>
+      <p>Come <b>from policy</b>. The rules are written down, not decided by the AI.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="rules-h">
+    <h2 id="rules-h">What steers the agent</h2>
+    <div class="rules">
+      <div class="col">
+        <h3>Governing policies</h3>
+        <p class="kicker">The rules of the business</p>
+        <ul><li>Payment</li><li>Order</li><li>Budget</li></ul>
+      </div>
+      <div class="col">
+        <h3>Skills</h3>
+        <p class="kicker">What the agent knows how to do</p>
+        <ul><li>Interact with the DB</li><li>Order workflow</li><li>Payment workflow</li></ul>
+      </div>
+      <div class="col hooks">
+        <h3>Hooks</h3>
+        <p class="kicker">Code that runs automatically around each action</p>
+        <ul>
+          <li>Receipt generation</li>
+          <li class="nest"><span class="guard">Guards</span>
+            <ul><li>Email spoofing <span class="pill">blocks</span></li><li>Policy breaks <span class="pill">blocks</span></li></ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="two">
+    <div>
+      <h2>Assumptions</h2>
+      <dl>
+        <div class="row"><dt>Business owner</dt><dd>uses Claude Code</dd></div>
+        <div class="row"><dt>Guardline</dt><dd>a payment threshold</dd></div>
+        <div class="row"><dt>Checks / validation</dt><dd>order sent<br>payment sent</dd></div>
+        <div class="row"><dt>Order receipt</dt><dd>generated when the order starts</dd></div>
+        <div class="row"><dt>MCP proxy / Claude SMB plugin</dt><dd>build around these<small>SMB = small and medium business</small></dd></div>
+      </dl>
+    </div>
+    <div>
+      <h2>What we build</h2>
+      <dl>
+        <div class="row"><dt>Website</dt><dd>Dashboard<br>Policies<br>Order receipt</dd></div>
+        <div class="row"><dt>MCP</dt><dd>Bank<br>Inventory<small>simulate the outside world</small></dd></div>
+        <div class="row"><dt>DB</dt><dd>MCP retrieves data from it</dd></div>
+        <div class="row"><dt>Checks</dt><dd>Deterministic <span class="ai">no AI</span><small>possibly behind the MCP</small></dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <footer>
+    <span>Source: whiteboard photo, <code>docs/whiteboard/2026-10-25-whiteboard.jpg</code> on branch <code>docs/whiteboard</code>.</span>
+    <span>Change from the board: demo stage 1 now also covers the order lifecycle.</span>
+    <span>Interpretations added in redraw: "outside our system" for the black box, "made by a hook" for the receipt, and the one-line descriptions under each heading.</span>
+  </footer>
+</div>

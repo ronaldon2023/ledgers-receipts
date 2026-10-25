@@ -208,7 +208,8 @@ def message(project: Path, receipt: dict[str, Any], port: int) -> str:
         text += f"{_safe(failed.get('title'))})"
     text += f". Open http://localhost:{port}/?state=live"
     number = order.get("order_number")
-    if isinstance(number, str) and PORTAL_ORDER.fullmatch(number):
+    # _safe(number) == number: a number _safe would mask (5+ digits) is never shown in full
+    if isinstance(number, str) and PORTAL_ORDER.fullmatch(number) and _safe(number) == number:
         text += f"#order/{number}"  # straight to this order's receipt
     if not portal_listening(port):
         start = f"cd {shlex.quote(str(project))} && .venv/bin/python -m render.portal"

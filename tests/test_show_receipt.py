@@ -124,7 +124,7 @@ def test_clean_receipt_says_verified(tmp_path: Path, listener: int) -> None:
     assert msg == f"Receipt ready for PO-2038: VERIFIED. Open {link}"
 
 
-@pytest.mark.parametrize("number", ["PO#2038", "PO 2038", "x" * 41, 2038])
+@pytest.mark.parametrize("number", ["PO#2038", "PO 2038", "x" * 41, 2038, "PO-123456789"])
 def test_unsafe_order_number_links_to_the_dashboard(
     tmp_path: Path, listener: int, number: object
 ) -> None:

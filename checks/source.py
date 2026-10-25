@@ -2,6 +2,7 @@
 
 SqliteSource opens bakery.db read-only (?mode=ro), so a check can't change the records it
 judges. Tests and the MCP server pass a Source in; any object with these methods works.
+Open one SqliteSource per call: a connection shared across threads raises, which blocks.
 """
 
 import sqlite3

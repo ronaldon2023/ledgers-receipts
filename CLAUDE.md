@@ -40,6 +40,8 @@ someone else's half-finished code.
 - Tests in pytest under `tests/`. Tests that call the Claude API are marked
   `@pytest.mark.live` and skipped by default.
 - Money is always integer cents.
+- Presidio uses the small spaCy model `en_core_web_sm` (installed by
+  `setup.sh`). Never load `en_core_web_lg`; it is a 400 MB download.
 - Only `bakery/server.py` writes to `bakery.db`. Everything else opens it
   read-only (`?mode=ro`).
 - Use example domains only (`*.example`), never real people or addresses.

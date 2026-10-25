@@ -413,7 +413,7 @@ Portal.page = function (d, ui) {
 
 /* ---------- browser start-up: load the JSON, check it again every second, handle clicks ---------- */
 if (typeof document !== "undefined") (function () {
-  var KEY = "receipts-portal-v3", STATES = ["pending", "stopped", "paid", "declined"];
+  var KEY = "receipts-portal-v3", STATES = ["pending", "stopped", "paid", "declined", "live"];
   var ui = { state: "pending", filter: "all", feedView: "order", confirming: null, dismissed: {}, ran: {}, onboarded: false, onboard: { step: 0 } };
   var data = null, last = "", side = document.getElementById("side"), app = document.getElementById("app");
   try {

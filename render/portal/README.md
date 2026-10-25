@@ -10,6 +10,8 @@ python -m render.portal          # opens http://127.0.0.1:8000/
 ```
 
 Add `?state=pending|stopped|paid|declined` to the URL to jump to a demo state.
+
+`?state=live` shows a real run: after Claude works, `python -m receipts.verify` writes `feed_live.json` and `receipt_live_<order>.json` here from the log and `bakery.db` (git-ignored).
 "Restart demo" goes back to `pending`.
 
 ## Data (`fixtures/portal/`, served at `/data/`)

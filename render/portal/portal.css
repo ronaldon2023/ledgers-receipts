@@ -264,6 +264,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .cmd .btn { flex: none; }
 .field { display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
 .field input { min-height: 44px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 0 12px; font: inherit; background: var(--surface); color: var(--fg); width: 100%; }
+.tableinput { min-height: 32px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 8px; font: inherit; font-size: 14px; background: var(--surface); color: var(--fg); }
 .dollar { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .side .navbtns { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 0 2px; }
 .side .navbtns .btn { width: 100%; min-height: 40px; font-size: 14px; background: var(--side-2); color: var(--side-fg); border-color: #4A382B; }

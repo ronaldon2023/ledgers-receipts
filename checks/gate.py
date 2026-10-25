@@ -1,9 +1,10 @@
 """Checks a write must pass before it runs: the plan's C4 to C8 for pay_bill.
 
 The MCP server's write tool calls evaluate() first and writes only if no result is "block",
-which is what allowed() tests. Each check reads the records through a Source and never trusts the agent's
-arguments over them. Anything that goes wrong blocks (fail closed). Ids and statuses follow
-docs/order-lifecycle-plan.md section 5; C1 to C3 need the owner's policy (issue #9).
+which is what allowed() tests. Each check reads the records through a Source and never
+trusts the agent's arguments over them. Anything that goes wrong blocks (fail closed). Ids
+and statuses follow docs/order-lifecycle-plan.md section 5; C1 to C3 need the owner's policy
+(issue #9).
 
 Usage: python -m checks pay_bill '{"bill_id": "BILL-07", ...}' [--db bakery.db]   (see __main__)
 """

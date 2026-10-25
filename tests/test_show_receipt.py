@@ -40,7 +40,15 @@ def stub_verify(project: Path, receipt: dict | None = RECEIPT, code: int = 0) ->
     python.chmod(0o755)
 
 
+def make_checkout(project: Path) -> None:
+    """The markers the hook needs before it acts: receipts/verify.py and bakery-local in .mcp.json."""
+    (project / "receipts").mkdir(exist_ok=True)
+    (project / "receipts" / "verify.py").write_text("")
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"bakery-local": {}}}))
+
+
 def write_log(project: Path, *entries: dict) -> None:
+    make_checkout(project)
     log = project / "logs" / "chain.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     with open(log, "a", encoding="utf-8") as f:
@@ -153,6 +161,47 @@ def test_free_port_adds_start_command(tmp_path: Path) -> None:
     msg = system_message(run_hook(tmp_path, port))
     start = f"cd {tmp_path.resolve()} && .venv/bin/python -m render.portal --port {port}"
     assert start in msg
+
+
+def test_other_pay_bill_tool_is_silent(tmp_path: Path, listener: int) -> None:
+    stub_verify(tmp_path)
+    write_log(tmp_path, {**payment(), "tool": "mcp__evil__pay_bill"})
+    assert run_hook(tmp_path, listener) == ""
+
+
+def test_plugin_tool_name_counts(tmp_path: Path, listener: int) -> None:
+    stub_verify(tmp_path)
+    write_log(
+        tmp_path, {**payment(), "tool": "mcp__plugin_ledgers-receipts_bakery-local__pay_bill"}
+    )
+    assert "PO-2038" in system_message(run_hook(tmp_path, listener))
+
+
+def test_matches_pretooluse_matcher() -> None:
+    hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())["hooks"]
+    matcher = hooks["PreToolUse"][0]["matcher"]
+    hook_src = HOOK.read_text()
+    assert f're.compile(r"{matcher}")' in hook_src
+
+
+@pytest.mark.parametrize(
+    "broken",
+    ["no-verify", "no-mcp", "bad-mcp", "no-bakery-server"],
+)
+def test_not_a_receipts_checkout_is_silent(tmp_path: Path, listener: int, broken: str) -> None:
+    stub_verify(tmp_path)
+    write_log(tmp_path, payment())
+    mcp = tmp_path / ".mcp.json"
+    if broken == "no-verify":
+        (tmp_path / "receipts" / "verify.py").unlink()
+    elif broken == "no-mcp":
+        mcp.unlink()
+    elif broken == "bad-mcp":
+        mcp.write_text("{nope")
+    else:
+        mcp.write_text(json.dumps({"mcpServers": {"other": {}}}))
+    assert run_hook(tmp_path, listener) == ""
+    assert not (tmp_path / "fixtures").exists()  # the stub verifier never ran
 
 
 def test_session_without_payment_is_silent(tmp_path: Path, listener: int) -> None:

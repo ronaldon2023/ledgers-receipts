@@ -8,7 +8,9 @@ call. When there is a new one, it runs the verifier the way `make receipt` does
 the portal link. If nothing listens on the portal port (env RECEIPTS_PORTAL_PORT, else 8000),
 the message also says how to start the portal. It never starts anything itself.
 
-It stays silent when stop_hook_active is set, when this session paid nothing, and when this
+It only acts in a Receipts checkout (receipts/verify.py present and .mcp.json registering a
+bakery-local server), and only counts calls to the bakery-local pay_bill tool by its exact
+name. It stays silent when stop_hook_active is set, when this session paid nothing, and when this
 session's newest payment was already reported. What was reported is kept per session in
 reported.json under $CLAUDE_PLUGIN_DATA (else a folder in the system temp dir), so the owner
 sees each link once. A failed build is not recorded, so the next turn tries again.
@@ -36,6 +38,22 @@ DEFAULT_PORT = 8000
 VERIFY_TIMEOUT_S = 20
 STATE_FILE = "reported.json"
 PASSING = ("verified", "pass")
+# Same pattern as the PreToolUse matcher in hooks/hooks.json.
+PAY_BILL_TOOL = re.compile(r"^mcp__(plugin_ledgers-receipts_)?bakery-local__pay_bill$")
+
+
+def is_receipts_checkout(project: Path) -> bool:
+    """True when the folder has receipts/verify.py and a .mcp.json registering bakery-local.
+    The plugin runs in every folder, so this keeps the hook from running a folder's own
+    .venv/bin/python unless that folder is a Receipts checkout."""
+    if not (project / "receipts" / "verify.py").is_file():
+        return False
+    try:
+        config = json.loads((project / ".mcp.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return False
+    servers = config.get("mcpServers") if isinstance(config, dict) else None
+    return isinstance(servers, dict) and "bakery-local" in servers
 
 
 class BuildError(Exception):
@@ -77,7 +95,7 @@ def newest_payment(log: Path, session: str) -> dict[str, Any] | None:
             if (
                 isinstance(entry, dict)
                 and entry.get("session") == session
-                and str(entry.get("tool", "")).endswith("__pay_bill")
+                and PAY_BILL_TOOL.match(str(entry.get("tool", "")))
             ):
                 newest = entry
     return newest
@@ -192,6 +210,8 @@ def report(event: Any) -> str | None:
         return None
     session = str(event.get("session_id") or "")
     project = project_dir()
+    if not is_receipts_checkout(project):
+        return None
     payment = newest_payment(log_path(project), session) if session else None
     if payment is None:
         return None

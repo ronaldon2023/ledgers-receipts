@@ -1,7 +1,7 @@
 # Plan: checks, guards, verify, skills and hooks (Anthony's lane)
 
 Revision 3, 2026-10-25 ~14:35 PT: brought in line with PRs #2, #4, #10 and #13 as merged (§0) and the decisions made
-since revision 2. Written for Anthony and for the agent session working in the team repo (this repo). Read it cold:
+since revision 2. Revision 3.1, 14:42: §8 Q-supplier-tools and Q-policy-seed settled by Anthony. Written for Anthony and for the agent session working in the team repo (this repo). Read it cold:
 paths are repo-relative. The open questions left are in §8. Their defaults are labeled. **Where §0 and a later
 section disagree, §0 wins.**
 
@@ -312,24 +312,32 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
 - **Q-proxy:** does Luke and Owen's proxy log or block calls too? If it logs, task 5's log may duplicate it.
 - **Q-db-write:** who saves the final receipt into the DB ("Outcome receipt → DB")? Default: an MCP tool
   `save_receipt(json)` that Luke and Owen add, called by the Stop hook.
-- **Q-supplier-tools (reopened 14:25):** Anthony wants the order call to return the confirmation and the supplier's
-  invoice (13:25). As built, `place_order` returns no invoice and `create_order` was dropped (§0). Two options:
-  - **A:** BakeSupply's `place_order` also returns an invoice (amount, due date, sender email, account), and a
-    `bakery-local` tool saves it as the `bills` row. The invoice still comes from the supplier, which is what gives
-    C5 and C8 meaning. Owen and Luke would build it.
-  - **B:** a `bakery-local` `create_order(vendor_id, items)` calls BakeSupply and writes `orders` and `bills` itself.
-    This splits the supplier across two servers.
-  - **Default: A**, Anthony's lean, not yet agreed with Owen and Luke. Stage 1 doesn't depend on it (§6a). Either
-    option also settles F4: how one order of several SKUs maps to `place_order` calls.
+- **Q-supplier-tools (settled 14:40, Anthony):** use a real invoice when there is one, and the order receipt as a
+  stand-in until there is. Nobody has to change `place_order`.
+  - **If `place_order`'s response carries invoice fields** (amount, due date, sender, pay-to account), they become the
+    `bills` row and the receipt's `bill`, with a logged `bill_received` event.
+  - **If it doesn't**, the `bill` is filled from the order response: `references_order`, `vendor_id`, and
+    `amount_cents` from `total_cents`. `due_date` is the order date (default). `from` and `received_at` stay empty,
+    because no supplier sent anything.
+  - **The receipt shows the stand-in.** The `bill_received` event gets `source: "unverified"`, which the website
+    already marks. The schema's `bill` has `additionalProperties: false`, so there's no stand-in flag on the bill
+    itself. Empty `from` and `received_at` are the stand-in's signature.
+  - **A real invoice replaces the stand-in when it arrives.** That covers a later `place_order` field, an inbox
+    message, or a seeded `bills` row. C5 and C8 then rerun against it.
+  - **Checks on a stand-in (default):** C5 would compare the order with itself, and C8 has no sender to check. So
+    neither is recorded as `verified`, and the verdict can't be `VERIFIED` while the bill is a stand-in. Stage 1
+    isn't affected: seeded BILL-07 is a real bill with `from_addr` and `pay_to_account` (§6a).
+  - Still open: how one order of several SKUs maps to `place_order` calls (F4).
 - **Q-smb-onboard:** the SMB plugin's `smb-onboard` saves its business profile to "the Cowork session memory
   directory" (`small-business/skills/smb-onboard/SKILL.md:41`). Where that lands under Claude Code is untested.
   Task 8 must check it, so our onboarding can read the profile and skip questions it already asked.
 - **Q-ask-in-server:** default D2 keeps the human prompt in a hook. Alternative: the server refuses any
   over-threshold payment unless the call carries an approval the owner gave. That is Future: it needs auth.
-- **Q-policy-seed (new 14:30):** Ronaldo restored `policies` and `accounts` at 14:23 (7bf070f). Two minutes later,
-  Anthony deferred policies and thresholds to #9. Anthony and Ronaldo decide:
-  - **Default:** the rows stay as seed data, and stage 1 doesn't check them.
-  - **Alternative:** stage 1 adds the threshold back, so C1 asks only over $500. A clean $800 payment of BILL-07
-    still asks.
-  - Either way the demo runs the same. The choice changes what `policy.sha256` hashes (F2) and whether
-    `chk_2`/`chk_6` stay in the sample (F3).
+- **Q-policy-seed (settled 14:40, Anthony):** onboarding generates the policies. The demo may use some of their
+  values, but mostly they support future functionality.
+  - The seeded `policies` rows (7bf070f) stand in for what onboarding would write.
+  - Stage 1 enforces none of them, and C1 still asks on every payment (D2).
+  - `policy.sha256` hashes the policy rows that exist when the receipt is written (F2).
+  - Which values the demo shows, and where (e.g. the website's Policies page on `feat/portal`), is Lana's and
+    Anthony's call.
+  - Where onboarding stores them stays issue #9.

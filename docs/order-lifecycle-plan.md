@@ -22,7 +22,7 @@ and the **skills and hooks** around them.
 - **Verify (`verify/`):** builds the final order receipt JSON from the log, the DB, the policy and the agent's
   claims. The website renders it.
 - **Claim extraction (core):** pulls what the agent says it did out of its final message, then compares that
-  with the DB. Starts from the existing draft in Anthony's local extraction draft.
+  with the DB. Starts from Anthony's local extraction draft, which is not in this repo yet; task 6 commits it.
 - **Skills:** onboarding (owner Q&A, which writes `policy.json`), the order workflow, the payment workflow, and
   working with the DB through MCP.
 
@@ -58,6 +58,10 @@ branch `docs/whiteboard`). The original phone photos show the door code and Wi-F
 | D6 | Build against fixtures until the DB and MCP land. Checks read records through one `Source` interface: `FixtureSource` now, `SqliteSource(conn)` when Ronaldo's schema lands, using the server's own connection | default | Waiting on the DB |
 | D7 | Payment-ready trigger in the demo: the owner asks. SessionStart also lists invoices due within N days | default | cron or launchd: Future |
 | D8 | Our plugin depends on and wraps the Claude for Small Business plugin (`small-business@knowledge-work-plugins`, v1.35.1 at 33d3dea). We use its skills: `smb-onboard`, `ap-processor` and `pay-the-bills` (which never sends money) and `inventory-planner`. We add the execution through MCP, the checks and the receipt. Install: `"dependencies": [{"name": "small-business", "marketplace": "knowledge-work-plugins"}]` in our `plugin.json`, plus `"allowCrossMarketplaceDependenciesOn": ["knowledge-work-plugins"]` in our `marketplace.json`. Installing ours then installs theirs (plugin-dependencies.md:58, 89). Without the allowlist entry, the install completes without the dependency and our plugin fails to load (:110). There's no version range, because a range resolves against git tags (`small-business--v<ver>`) that their repo may not have (:51, 143). The install doc keeps the two-command manual path as a fallback | Anthony, 13:25 (goal); docs read 13:30 | Manual install instructions only: one more step for a non-developer owner |
+
+**Conflict to settle (D1):** `docs/PLAN.md` says "The server never checks policy. Blocking is the guard's job" and gives
+Ronaldo a PreToolUse `guard.py`. D1 moves policy checks into the MCP write tools instead. Anthony and Ronaldo decide;
+either way the check logic is the shared `checks/` library, so only the call site changes.
 
 ## 3 · Dependencies and interfaces
 
@@ -128,10 +132,10 @@ Every task follows the same flow: a branch, a PR, a reviewer subagent, then a pe
 | 1 | Contracts: `policy.schema.json`; `order_receipt.schema.json` (opened, updated, final); `CheckResult`; the `evaluate` signature; samples for each | executor (opus) | Samples validate (`jsonschema`); Lana, Ronaldo, Luke and Owen say yes in the team channel | — |
 | 2 | Checks library `checks/`: `Source`, `FixtureSource`, checks C1–C10 (§5), `evaluate`, `load_policy`. A corrupt or missing policy gives `block` | executor (opus) | §5 table tests pass in `make test`; nothing imports `anthropic` or networking | 1 |
 | 3 | MCP hand-off: an example call site, plus `tests/test_server_checks.py` that Luke and Owen run against their tools. A blocked call writes no row; a crashing check refuses | executor (opus), with Luke + Owen | Their server passes the tests on a fixture DB | 2, MCP tool names |
-| 4 | Approval hook: PreToolUse on the pay tool. Calls C1, returns `ask` over the threshold, and has `onFailure: "block"` | executor (opus) | Pipe tests: under the threshold gives no decision; over it gives `ask`; a missing policy blocks | 2 |
-| 5 | Receipt and log hooks: PostToolUse on create order opens `receipts/<order_id>.json`; on pay it updates the receipt. Each call appends a hash-chain log entry. Writes are atomic (temp file + rename) under a file lock | executor (opus) | Replaying a fixture event stream gives the sample receipt; two parallel calls lose no update; the chain verifies | 1, 2 |
-| 6 | Claims: port `extraction/` to contract 3 (the actions now include `create_order` and `pay_invoice`; amounts in integer cents; `target` is the name as the summary says it). Use `messages.parse` on Haiku 5.5 with no `temperature`, because Haiku 5.5 returns 400 on a non-default temperature (claude-api model-migration.md:2295). Drop any claim whose quote isn't in the summary | executor (opus) | Unit tests offline; golden set (live, `RUN_LIVE=1`, with Anthony's go on spend) at 9/10, stable across 3 runs | 1 |
-| 7 | Verify: `verify.py`. Step 0: chain intact. Step 1: log against DB (`phantom`). Step 2: expected order against actual (`not_done`). Step 3: claims against DB (`false_claim`, `silent_action`). Step 4: the pre-check results already recorded. Then the verdict. The Stop hook runs extract and verify, then finalizes the receipt; `make receipt` reruns them when Stop didn't fire | executor (opus) | One fixture set per status gives that status; the tampered-log fixture gives `UNTRUSTED` | 5, 6 |
+| 4 | Approval hook: PreToolUse on the pay tool. Calls C1, returns `ask` over the threshold, and has `onFailure: "block"` (needs Claude Code v2.1.295 or later) | executor (opus) | Pipe tests: under the threshold gives no decision; over it gives `ask`; a missing policy blocks | 2 |
+| 5 | Receipt and log hooks: PostToolUse on create order opens `receipts/<order_id>.json`; on pay it updates the receipt. The log is main's `receipts/hook_log.py`, already wired to every call in `.claude/settings.json`; task 5 reads it and adds no second log entry. Writes are atomic (temp file + rename) under a file lock | executor (opus) | Replaying a fixture event stream gives the sample receipt; two parallel calls lose no update; the chain verifies | 1, 2 |
+| 6 | Claims: port `extraction/` to contract 3 (the actions now include `create_order` and `pay_invoice`; amounts in integer cents; `target` is the name as the summary says it). Use `messages.parse` on Haiku 5.5 with no `temperature`. This deliberately differs from PLAN.md's temperature 0, because Haiku 5.5 returns 400 on a non-default temperature (claude-api model-migration.md:2295). Drop any claim whose quote isn't in the summary | executor (opus) | Unit tests offline; golden set (live, `RUN_LIVE=1`, with Anthony's go on spend) at 9/10, stable across 3 runs | 1 |
+| 7 | Verify: `verify.py`. Step 0: chain intact. Step 1: log against DB (`phantom`). Step 2: expected order against actual (`not_done`). Step 3: claims against DB (`false_claim`, `silent_action`). Step 4: rerun the pre-payment checks as of just before the payment (§6a) and compare with the recorded results. Then the verdict. The Stop hook runs extract and verify, then finalizes the receipt; `make receipt` reruns them when Stop didn't fire | executor (opus) | One fixture set per status gives that status; the tampered-log fixture gives `UNTRUSTED` | 5, 6 |
 | 8 | Onboarding: SessionStart hook (no `policy.json` → tell Claude to run the onboarding skill; otherwise a short policy summary plus invoices due soon). Onboarding skill: Q&A for threshold, monthly budget, bank floor, approved suppliers (bank account, email domain), tools, external systems; writes `policy.json`. It runs after the SMB plugin's `smb-onboard` and skips what that already asked (Q-smb-onboard) | executor (opus) | In a fresh `CLAUDE_CONFIG_DIR` with the plugin installed, onboarding starts unprompted and writes a policy that validates | 0, 1 |
 | 9 | Workflow skills: order, payment, and DB via MCP. Each names which tool to call when, reads back after every write, and never pays an account that differs from the one on file | executor (opus) | A dry run follows each skill to the end; a reviewer confirms every tool it names exists | 0, MCP tool names |
 | 10 | Plugin packaging: the manifest, with the SMB plugin in `dependencies` and our `marketplace.json` allowlist (D8). Done-test addition: one `claude plugin install` in a clean config dir installs both plugins; `hooks.json` with `${CLAUDE_PLUGIN_ROOT}`; deny rules on `policy.json`, `receipts/**`, `logs/**`, `Bash(sqlite3:*)`; an install page for owners and for developers (SQL, MCP) | executor (opus) | Installs from the repo in a clean config dir; `/plugin` lists it; hooks fire on a stub call | 4–9 |
@@ -179,7 +183,15 @@ The checks are deterministic. They read only the policy and the records, through
 | silent action | payment row the summary never mentions | `silent_action` |
 | check crash | policy file missing or corrupt | the tool refuses (fail closed) |
 
+The values above are illustrative. Tests on seed data use main's policies: threshold $500, monthly budget $3,000, bank
+floor $2,000, balance $4,800. BILL-07 is $800, so a clean payment of it reaches C1 `ask` before it passes.
+Names on main: the pay tool is `pay_bill(bill_id, amount_cents, to_account)` (PLAN.md), `payments` keys on `bill_id`,
+and `orders.status` is `placed`/`received`/`cancelled`. Read `pay_invoice`, `invoice_id` and `confirmed` in this plan as those.
+
 ## 6 · Order receipt JSON (default shape, finalized in task 1)
+
+Superseded in part by §6a: the stage-1 receipt also carries `order`, `invoice`, `checks_version` and `checks[].inputs`.
+Task 1 writes the real sample.
 
 ```json
 {"order_id": "ORD-1", "opened_at": "2026-10-25T13:00:00Z", "closed_at": null,
@@ -216,8 +228,8 @@ Demo runs: one clean payment (`VERIFIED`), one with the changed account (C4 bloc
   `inputs`, which holds the masked values the check compared, e.g. `{"pay_to": "••3210", "on_file": "••4471"}`.
 - **`checks_version`:** the git commit of the checks library that ran.
 - **`policy.sha256`:** the hash of the `policy.json` that ran.
-- **Verify reruns the checks at finalize.** It recomputes each pre-payment check from the DB with the same version
-  and policy. A stored result that differs from the rerun is a finding of its own, and the verdict can't be `VERIFIED`.
+- **Verify reruns the checks at finalize.** It recomputes each pre-payment check from the DB as it stood just before the
+  payment under test (that payment's own row and later writes excluded, or C7 would always fail), with the same version and policy. A stored result that differs from the rerun is a finding of its own, and the verdict can't be `VERIFIED`.
 - **The website renders `title`, `evidence` and `inputs` as given** and evaluates nothing.
 - Rejected: logic in the receipt or in the hook that writes it. Whatever writes the receipt would then be grading itself.
 
@@ -239,8 +251,9 @@ Demo runs: one clean payment (`VERIFIED`), one with the changed account (C4 bloc
 
 ## 8 · Open questions
 
-- **Q-folders:** which team-repo folders are Anthony's? Default: `checks/`, `verify/`, `claims/`, `hooks/`,
-  `skills/`, `.claude-plugin/`. Settle it in the team channel before task 1's PR.
+- **Q-folders:** which team-repo folders are Anthony's? Proposed: `checks/`, `verify/`, `hooks/`, `skills/`, `.claude-plugin/`.
+  Main's CLAUDE.md gives `claims/` to Person 2 and `receipts/` to Ronaldo, so task 6's folder and task 5's
+  `receipts/<order_id>.json` output path are questions for them. Settle it in the team channel before task 1's PR.
 - **Q-proxy:** does Luke and Owen's proxy log or block calls too? If it logs, task 5's log may duplicate it.
 - **Q-db-write:** who saves the final receipt into the DB ("Outcome receipt → DB")? Default: an MCP tool
   `save_receipt(json)` that Luke and Owen add, called by the Stop hook.

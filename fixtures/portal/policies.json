@@ -1,11 +1,11 @@
 {
-  "_note": "Business rules shown on the Policies page. ids, kinds, titles and limits match receipt.policies; setting is display text.",
+  "_note": "Business rules shown on the Policies page. ids, kinds, titles and limits match POLICIES in bakery/seed.py; setting is display text.",
   "guards": [
     {"id": "GUARD-EMAIL", "guard": "email_spoofing", "title": "Only email addresses on file", "setting": "Customers and suppliers on file"},
     {"id": "GUARD-PAY-ACCOUNT", "guard": "policy", "title": "Never pay an account that differs from the one on file", "setting": "Blocked before the bank sees it"}
   ],
   "policies": [
-    {"id": "POL-ORDER-VENDOR", "kind": "order", "title": "Order only from approved suppliers", "setting": "Approved: Flour Co, BakeSupply"},
+    {"id": "POL-ORDER-VENDOR", "kind": "order", "title": "Order only from approved suppliers", "setting": "Approved: Flour Co"},
     {"id": "POL-PAY-THRESHOLD", "kind": "payment", "title": "Payments over $500 need owner approval", "limit_cents": 50000, "setting": "$500 limit"},
     {"id": "POL-PAY-ACCOUNT", "kind": "payment", "title": "Pay only to the bank account on file", "setting": "Flour Co ********4471"},
     {"id": "POL-BUDGET-MONTHLY", "kind": "budget", "title": "Monthly supplies budget", "limit_cents": 300000, "setting": "$3,000 / month"},

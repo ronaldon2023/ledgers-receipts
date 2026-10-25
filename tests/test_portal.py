@@ -8,23 +8,32 @@ import json
 import re
 import shutil
 import subprocess
+import warnings
 from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
+from bakery.seed import POLICIES
 from render.portal.__main__ import resolve
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "fixtures" / "portal"
 JS = ROOT / "render" / "portal" / "portal.js"
 STATES = ["pending", "stopped", "paid", "declined"]
-SCHEMA = json.loads((DATA / "order_receipt.schema.json").read_text())
+# The team's schema on main: if it changes, these tests break instead of drifting silently.
+SCHEMA = json.loads((ROOT / "docs" / "mock" / "order_receipt.schema.json").read_text())
+SAMPLE = json.loads((ROOT / "docs" / "mock" / "order_receipt.json").read_text())
 XSS = "<script>alert(1)</script>"
 
-needs_node = pytest.mark.skipif(
-    shutil.which("node") is None, reason="needs Node.js to run portal.js"
-)
+NO_NODE = shutil.which("node") is None
+if NO_NODE:
+    warnings.warn(
+        "Node.js is not installed: the portal rendering tests in test_portal.py are SKIPPED. "
+        "Install Node (https://nodejs.org) to run them.",
+        stacklevel=1,
+    )
+needs_node = pytest.mark.skipif(NO_NODE, reason="needs Node.js to run portal.js")
 
 HARNESS = """
 const vm = require("vm"), fs = require("fs");
@@ -67,17 +76,27 @@ def page(d: dict, view: str = "dashboard", **ui) -> str:
 # ---------- fixtures ----------
 
 
-@pytest.mark.parametrize("name", ["receipt_PO-2041_1.json", "receipt_PO-2041_2.json"])
-def test_receipts_match_schema(name: str) -> None:
+@pytest.mark.parametrize("state", STATES)
+def test_receipts_match_schema(state: str) -> None:
     validator = Draft202012Validator(SCHEMA, format_checker=FormatChecker())
-    assert [e.message for e in validator.iter_errors(load(name))] == []
+    receipt = load(f"receipt_PO-2041_{state}.json")
+    assert [e.message for e in validator.iter_errors(receipt)] == []
+    assert receipt["receipt_id"] == SAMPLE["receipt_id"]  # one receipt per order, updated in place
 
 
-def test_policies_match_receipt() -> None:
-    keys = ("id", "kind", "title", "limit_cents")
-    mine = [{k: p[k] for k in keys if k in p} for p in load("policies.json")["policies"]]
-    theirs = load("receipt_PO-2041_1.json")["policies"]
-    assert sorted(mine, key=lambda p: p["id"]) == sorted(theirs, key=lambda p: p["id"])
+def test_stopped_receipt_is_mains_sample() -> None:
+    mine = load("receipt_PO-2041_stopped.json")
+    assert {k: v for k, v in mine.items() if k != "$schema"} == {
+        k: v for k, v in SAMPLE.items() if k != "$schema"
+    }
+
+
+def test_policies_match_seed() -> None:
+    mine = sorted(
+        (p["id"], p["kind"], p["title"], p.get("limit_cents"))
+        for p in load("policies.json")["policies"]
+    )
+    assert mine == sorted(POLICIES)
 
 
 @pytest.mark.parametrize("state", STATES)
@@ -115,7 +134,7 @@ def test_every_state_and_view_renders() -> None:
     jobs = []
     for state in STATES:
         d = data(state)
-        for view in ["dashboard", "activities", "policies", "order/PO-2041", "order/BS-1"]:
+        for view in ["dashboard", "activities", "policies", "order/PO-2041", "order/PO-2042"]:
             for feed_view in ["time", "order"]:
                 ui = {"view": view, "filter": "all", "feedView": feed_view}
                 jobs.append({"data": d, "ui": ui})
@@ -176,11 +195,13 @@ def test_bank_numbers_show_last_four_only() -> None:
 @needs_node
 def test_by_order_groups_each_order() -> None:
     html = page(data("stopped"), "activities", feedView="order")
-    po, bs, other = (html.index(s) for s in ["Order PO-2041", "Order BS-1", "Not tied to an order"])
-    assert po < bs < other
+    po, restock, other = (
+        html.index(s) for s in ["Order PO-2041", "Order PO-2042", "Not tied to an order"]
+    )
+    assert po < restock < other
     for title in ["Bill BILL-07 from Flour Co arrived", "Payment of $800.00 to Flour Co stopped"]:
-        assert po < html.index(title) < bs
-    assert bs < html.index("Ordered 8 kg of butter from BakeSupply") < other
+        assert po < html.index(title) < restock
+    assert restock < html.index("Claude asks to order 3 bags of cane sugar") < other
     assert other < html.index("Email to billing-help@outside.example stopped")
 
 
@@ -216,22 +237,22 @@ def test_stopped_trail_shows_pay_bill_then_guard() -> None:
 @needs_node
 def test_restock_order_card_needs_approval() -> None:
     html = page(data("pending"))
-    start = html.index("Order 100 kg of sugar from BakeSupply")
+    start = html.index("Order 3 bags of cane sugar from Flour Co")
     card = html[html.rindex("<article", 0, start) : html.index("</article>", start)]
     assert 'class="card ask"' in card
     assert 'class="checks"' not in card
     assert "Steps Claude took (4)" in card
-    assert "bakesupply.get_price · ingredient=sugar" in card
+    assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
     assert "Approve with passkey" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
     assert tile.startswith('Waiting on you</span><span class="n">2<')
-    assert "Sugar order, $95.00" in tile
+    assert "Sugar order, $120.00" in tile
 
 
 @needs_node
 def test_dismissed_card_leaves_waiting_count() -> None:
     html = page(data("declined"), dismissed={"att_order": True})
-    assert "Order 100 kg of sugar from BakeSupply" not in html
+    assert "Order 3 bags of cane sugar from Flour Co" not in html
     assert 'Waiting on you</span><span class="n">0<' in html
 
 
@@ -246,7 +267,7 @@ def test_activities_have_their_own_page() -> None:
 @needs_node
 def test_approval_cards_have_no_status_line() -> None:
     html = page(data("pending"))
-    attn = html[html.index("Needs your attention") : html.index("At a glance")]
+    attn = html[html.index("Needs your attention") :]
     assert attn.count('<article class="card ask">') == 2
     assert 'class="metaRow"' not in attn
     stopped = page(data("stopped"))
@@ -294,7 +315,7 @@ def test_onboarding_install_commands_match_plugin_pr() -> None:
 @needs_node
 def test_onboarding_rules_default_from_policies_and_escape_input() -> None:
     html = onboarding(2)["main"]
-    assert 'value="Flour Co, BakeSupply"' in html
+    assert 'value="Flour Co"' in html
     assert 'id="r-threshold" type="number" min="0" step="1" inputmode="numeric" value="500"' in html
     rules = {
         "suppliers": XSS,
@@ -327,3 +348,26 @@ def test_every_page_has_a_start_onboarding_button() -> None:
             '<button type="button" class="btn" data-onb="again">Start onboarding</button>'
             in page(data("stopped"), view)
         )
+
+
+@needs_node
+def test_receipt_page_follows_mains_receipt() -> None:
+    for state in STATES:
+        html = page(data(state), "order/PO-2041")
+        assert html.index('href="#dashboard">← Back to dashboard</a>') < html.index("<h1>")
+        assert html.count("<li><b>") >= 6  # one stage per event
+        assert "Approvals" not in html and "Replaces receipt" not in html
+    assert "hasn't written its summary yet" in page(data("pending"), "order/PO-2041")
+    assert ">Rerun differs<" in page(_with_status("rerun_mismatch"), "order/PO-2041")
+
+
+def _with_status(status: str) -> dict:
+    d = copy.deepcopy(data("stopped"))
+    d["receipt"]["checks"][0]["status"] = status
+    return d
+
+
+@needs_node
+def test_glance_comes_before_attention() -> None:
+    html = page(data("pending"))
+    assert html.index("At a glance") < html.index("Needs your attention")

@@ -42,7 +42,8 @@ Portal.CHECK = {
   flagged: ["Flag", "b-flag", "⚑", "ic-flag"], needs_approval: ["Needs approval", "b-ask", "!", "ic-ask"],
   phantom: ["Didn't happen", "b-odd", "≠", "ic-odd"], false_claim: ["Doesn't match", "b-odd", "≠", "ic-odd"],
   silent_action: ["Not in summary", "b-odd", "≠", "ic-odd"], not_done: ["Not done", "b-stop", "✕", "ic-stop"],
-  unknown_recipient: ["Unknown recipient", "b-stop", "✕", "ic-stop"], _unknown: ["Unknown", "b-mute", "?", "ic-mute"]
+  unknown_recipient: ["Unknown recipient", "b-stop", "✕", "ic-stop"], rerun_mismatch: ["Rerun differs", "b-stop", "≠", "ic-stop"],
+  _unknown: ["Unknown", "b-mute", "?", "ic-mute"]
 };
 // Step results: [label, badge, timeline dot]
 Portal.RESULT = {
@@ -217,11 +218,7 @@ Portal.dashboard = function (d, ui) {
   var pct = Math.floor(g.budget.used_cents / g.budget.limit_cents * 100); // round down: 99.7% is not "100% used"
   var waiting = cards.filter(function (c) { return c.level === "approve"; });
   var h = Portal.header("Good afternoon, " + f.owner);
-  h += '<section aria-labelledby="attnh"><div class="sh"><h2 id="attnh">Needs your attention</h2><span>' +
-    (cards.length ? cards.length + (cards.length === 1 ? " item" : " items") : "Nothing waiting") + '</span></div>';
-  h += cards.length ? '<div class="attn">' + cards.map(function (c) { return Portal.card(f, c, ui); }).join("") + '</div>'
-    : '<div class="card"><p>All clear. Nothing needs you right now.</p></div>';
-  h += '</section><section aria-labelledby="glh"><h2 id="glh" style="margin:0;font-size:19px;font-weight:600">At a glance</h2><div class="glance">' +
+  h += '<section aria-labelledby="glh"><h2 id="glh" style="margin:0;font-size:19px;font-weight:600">At a glance</h2><div class="glance">' +
     '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + '</span></span>' +
     '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div>' +
     '<span class="d">' + pct + '% used · ' + esc(Portal.dollars(g.budget.limit_cents - g.budget.used_cents)) + ' left</span></div>' +
@@ -231,7 +228,11 @@ Portal.dashboard = function (d, ui) {
     (waiting.length ? waiting.map(function (c) { return esc(c.short || c.title); }).join("<br>") : "No approvals waiting") + '</span></div>' +
     '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span>' +
     '<span class="d">' + esc(g.run.blocked) + ' blocked by the guard · <a href="#activities">see all activities</a></span></div></div></section>';
-  return h;
+  h += '<section aria-labelledby="attnh"><div class="sh"><h2 id="attnh">Needs your attention</h2><span>' +
+    (cards.length ? cards.length + (cards.length === 1 ? " item" : " items") : "Nothing waiting") + '</span></div>';
+  h += cards.length ? '<div class="attn">' + cards.map(function (c) { return Portal.card(f, c, ui); }).join("") + '</div>'
+    : '<div class="card"><p>All clear. Nothing needs you right now.</p></div>';
+  return h + '</section>';
 };
 Portal.activities = function (d, ui) {
   return Portal.header("AI agent activities") +
@@ -246,24 +247,21 @@ Portal.itemsTable = function (items, total) {
 Portal.receiptBody = function (r) {
   var esc = Portal.esc, v = Portal.status(Portal.VERDICT, r.verdict), p = r.payment, b = r.bill;
   var h = '<section class="card"><div class="verdict"><span class="b ' + v[1] + '">' + esc(v[0]) + '</span><p style="margin:0;max-width:70ch">' + esc(r.verdict_reason) + '</p></div>';
-  if (r.summary_check.status !== "checked") h += '<p class="banner">Claude\'s summary was not checked, so this receipt can\'t be called clean.</p>';
+  // One receipt per order, updated at each step: not_checked means Claude hasn't written its summary yet.
+  if (r.summary_check.status === "not_checked") h += '<p class="note">Claude hasn\'t written its summary yet, so it hasn\'t been checked.</p>';
+  else if (r.summary_check.status !== "checked") h += '<p class="banner">Claude\'s summary couldn\'t be checked, so this receipt can\'t be called clean.</p>';
   if (r.owner_action && r.owner_action.needed) h += '<p><strong>Next step:</strong> ' + esc(r.owner_action.title) + '</p>';
-  if (r.supersedes) h += '<p class="muted small">Replaces receipt <span class="mono">' + esc(r.supersedes) + '</span></p>';
-  h += '<ol class="stages">' + r.lifecycle.map(function (s) {
-    var st = s.source === "unverified" ? ["Unverified", "ic-mute"] : Portal.status(Portal.LIFE, s.status);
-    return '<li><b>' + esc(Portal.status(Portal.STAGE, s.stage)) + '</b><span class="muted">' + esc(s.at ? Portal.short(s.at) : "Not recorded") + '</span><span class="tag ' + st[1] + '">' + esc(st[0]) + '</span></li>';
+  h += '<ol class="stages">' + r.events.map(function (s) {
+    var st = s.status !== "not_reached" && s.source === "unverified" ? ["Unverified", "ic-mute"] : Portal.status(Portal.LIFE, s.status);
+    return '<li><b>' + esc(Portal.status(Portal.STAGE, s.stage)) + '</b><span class="muted">' + esc(s.at ? Portal.short(s.at) : s.status === "not_reached" ? "Not yet" : "Not recorded") + '</span><span class="tag ' + st[1] + '">' + esc(st[0]) + '</span></li>';
   }).join("") + '</ol></section>';
   var pay = Portal.status(Portal.PAYMENT, p.status) + (p.payment_id ? " · " + p.payment_id : "");
   var to = p.requested_to_account && p.requested_to_account !== p.account_on_file
     ? p.requested_to_account + " requested · " + p.account_on_file + " on file" : (p.account_on_file || "") + " (on file)";
-  var approvals = ((r.authorization || {}).approvals || []).map(function (a) {
-    return Portal.status(Portal.STAGE, a.step) + ": " + a.by.name + ", " + a.method + ", " + Portal.short(a.at);
-  });
   h += '<div class="two">' + Portal.itemsTable(r.order.items, r.order.total_cents) +
     '<section class="card"><h2 style="margin:0;font-size:17px">Bill and payment</h2><dl class="kv">' +
     (b ? '<dt>Bill</dt><dd>' + esc(b.bill_id + " · " + Portal.money(b.amount_cents) + " · due " + Portal.day(b.due_date)) + '</dd>' : '') +
-    '<dt>Payment</dt><dd>' + esc(pay) + '</dd><dt>Pay to</dt><dd class="mono">' + esc(to) + '</dd>' +
-    '<dt>Approvals</dt><dd>' + (approvals.length ? approvals.map(esc).join("<br>") : "None") + '</dd></dl></section></div>';
+    '<dt>Payment</dt><dd>' + esc(pay) + '</dd><dt>Pay to</dt><dd class="mono">' + esc(to) + '</dd></dl></section></div>';
   h += '<section class="card"><div class="sh"><h2>Checks</h2><span>Plain code decided each one, not Claude</span></div><ul class="checks">' + r.checks.map(function (c) {
     var s = Portal.status(Portal.CHECK, c.status), q = c.caused_by ? c.caused_by.quote : c.quote;
     return '<li class="' + (c.status === "flagged" ? "flag" : "") + '"><span class="' + s[3] + '">' + esc(s[2]) + '</span><span><span class="b ' + s[1] + '">' + esc(s[0]) + '</span>' + esc(c.title) +
@@ -276,7 +274,7 @@ Portal.order = function (d, num) {
   var o = (f.orders || []).filter(function (x) { return x.order_number === num; })[0];
   if (!o && !r) return Portal.header("Order not found", num) + '<div class="card"><p><a href="#dashboard">Back to the dashboard</a></p></div>';
   var seller = r ? r.order.seller : { name: o.seller, email: o.seller_email }, placed = r ? r.order.order_date : o.placed_at;
-  var h = Portal.header("Order receipt · " + num, seller.name + " · placed " + Portal.day(placed) + ", " + Portal.time(placed) + (seller.email ? " · " + seller.email : ""));
+  var h = '<a class="back" href="#dashboard">← Back to dashboard</a>' + Portal.header("Order receipt · " + num, seller.name + " · placed " + Portal.day(placed) + ", " + Portal.time(placed) + (seller.email ? " · " + seller.email : ""));
   h += r ? Portal.receiptBody(r) : '<section class="card"><p class="note">' + esc(o.receipt_note || "No receipt yet. The verifier writes one when the order stops: its bill is paid, or the payment is stopped.") + '</p></section>' +
     '<div class="two">' + Portal.itemsTable(o.items, o.total_cents) + '</div>';
   var steps = (f.steps || []).filter(function (s) { return s.order === num; });

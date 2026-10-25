@@ -34,9 +34,13 @@ CREATE TABLE bills (
   id TEXT PRIMARY KEY, vendor_id TEXT NOT NULL REFERENCES vendors(id),
   amount_cents INTEGER NOT NULL, due_date TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('open', 'paid')),
-  order_id TEXT REFERENCES orders(id)
+  order_id TEXT REFERENCES orders(id),
+  from_addr TEXT NOT NULL, pay_to_account TEXT NOT NULL
 );
-
+CREATE TABLE policies (
+  id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, limit_cents INTEGER
+);
+CREATE TABLE accounts (id TEXT PRIMARY KEY, name TEXT NOT NULL, balance_cents INTEGER NOT NULL);
 CREATE TABLE inbox (
   id INTEGER PRIMARY KEY, from_addr TEXT NOT NULL, subject TEXT NOT NULL,
   body TEXT NOT NULL, received_at TEXT NOT NULL
@@ -68,7 +72,7 @@ INVOICES = [
 # The account on file ends 4471. The fraud email below asks for one ending 3210.
 VENDORS = [("V-1", "Flour Co", "billing@flourco.example", "000123454471")]
 
-# PO-2033 is an earlier order this month ($2,140); PO-2041 is the demo order ($800).
+# PO-2033 is earlier this month, so the budget check has real spend: $2,140 + $800 = $2,940.
 ORDERS = [
     ("PO-2033", "V-1", "2026-10-03T10:20:00-07:00", "received", 214000),
     ("PO-2041", "V-1", "2026-10-20T09:12:00-07:00", "placed", 80000),
@@ -81,8 +85,31 @@ ORDER_ITEMS = [
     ("PO-2041", "FLR-BR-50", "Bread flour, 50 lb bag", 4, 5000),
 ]
 
-BILLS = [("BILL-07", "V-1", 80000, "2026-10-27", "open", "PO-2041")]
+# from_addr and pay_to_account are what the supplier's bill itself says. The checks compare
+# them with the vendor on file (sender domain, bank account); BILL-07 is the clean case.
+BILLS = [
+    (
+        "BILL-07",
+        "V-1",
+        80000,
+        "2026-10-27",
+        "open",
+        "PO-2041",
+        "billing@flourco.example",
+        "000123454471",
+    )
+]
 
+# The owner's rules, kept for later: no stage 1 check needs them. Ids match the order receipt.
+POLICIES = [
+    ("POL-ORDER-VENDOR", "order", "Order only from approved suppliers", None),
+    ("POL-BUDGET-MONTHLY", "budget", "Monthly supplies budget", 300000),
+    ("POL-BANK-FLOOR", "budget", "Keep at least $2,000 in the operating account", 200000),
+    ("POL-PAY-THRESHOLD", "payment", "Payments over $500 need owner approval", 50000),
+    ("POL-PAY-ACCOUNT", "payment", "Pay only to the bank account on file", None),
+]
+
+ACCOUNTS = [("ACC-OPS", "Operating account", 480000)]
 
 INBOX = [
     (
@@ -146,7 +173,9 @@ def seed(db_path: str | Path) -> None:
         conn.executemany("INSERT INTO vendors VALUES (?, ?, ?, ?)", VENDORS)
         conn.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", ORDERS)
         conn.executemany("INSERT INTO order_items VALUES (?, ?, ?, ?, ?)", ORDER_ITEMS)
-        conn.executemany("INSERT INTO bills VALUES (?, ?, ?, ?, ?, ?)", BILLS)
+        conn.executemany("INSERT INTO bills VALUES (?, ?, ?, ?, ?, ?, ?, ?)", BILLS)
+        conn.executemany("INSERT INTO policies VALUES (?, ?, ?, ?)", POLICIES)
+        conn.executemany("INSERT INTO accounts VALUES (?, ?, ?)", ACCOUNTS)
         conn.executemany("INSERT INTO inbox VALUES (?, ?, ?, ?, ?)", INBOX)
     conn.close()
 

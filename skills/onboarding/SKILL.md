@@ -13,14 +13,17 @@ they know why you're asking.
 ## Before you ask
 
 - If the session already holds a `## Business context` block from the Small Business plugin's
-  `smb-onboard`, reuse what it answered (business name, connected tools) and don't ask again.
+  `smb-onboard`, reuse what it answered (its **Business** one-liner and **Connected tools**).
 - If `receipts-onboarding.json` already exists, read it, show the owner what's saved, and ask
   only what they want to change.
+- Drop any question below that one of these already answers. If a round has nothing left to
+  ask, skip it.
 
-## Round 1: tools (one AskUserQuestion call, three questions)
+## Round 1: tools (one AskUserQuestion call, up to three questions)
 
-Ask all three in a single AskUserQuestion call. List options alphabetically; the owner can pick
-"Other" to name a different tool.
+Ask the remaining questions in a single AskUserQuestion call. List options alphabetically; the
+owner can pick "Other" to name a different tool. Set `multiSelect: true` on Payments, since a
+business can use more than one; the other two are single choice.
 
 | Header | Question | Options |
 |---|---|---|
@@ -34,15 +37,24 @@ connected yet, note it and say that `smb-onboard` can connect it later.
 
 ## Round 2: payment rules (one message)
 
-Ask these together in one plain message, and accept short answers:
+Ask these together in one plain message, and accept short answers. Start the message with:
+"For bank accounts, type only the last 4 digits, never the full number."
 
-1. Payments above what amount should need your written approval? Default: $1,000.
-2. What's your monthly budget for supplies? "No limit" is fine.
-3. Which suppliers do you pay? For each one: the name, their email domain, and the **last 4
+1. What's the name of your business? (Skip if you already know it.)
+2. Payments above what amount should need your written approval? Default: $1,000.
+3. What's your monthly budget for supplies? "No limit" is fine.
+4. Which suppliers do you pay? For each one: the name, their email domain, and the **last 4
    digits** of the bank account you pay them at.
 
-Never ask for, repeat or save a full account number. If the owner types one, keep only the last 4
-digits and tell them you did.
+Never ask for, repeat or save a full account, card or IBAN number. If the owner types one, keep
+only the last 4 digits, tell them you did, and say the full number stays in this chat's history.
+
+## How answers are stored
+
+- Each tool answer is stored as the option's label, or the owner's own words for "Other".
+  Payments is a list. Tools the owner mentions beyond these questions go in `other`.
+- "None, I use a spreadsheet" and "Bank transfer only" are stored as those labels.
+- "No limit" for the budget is stored as `null` in `monthly_budget_cents`.
 
 ## Save the answers
 
@@ -56,7 +68,7 @@ integer cents, unknown values as `null`):
   "status": "stub",
   "created_at": "2026-10-25T15:00:00-07:00",
   "business": {"name": "Sweet Rose Bakery", "from_smb_onboard": true},
-  "integrations": {"bookkeeping": "QuickBooks", "payments": "Square", "email": "Gmail", "other": []},
+  "integrations": {"bookkeeping": "QuickBooks", "payments": ["Square"], "email": "Gmail", "other": []},
   "payment_rules": {
     "approval_threshold_cents": 100000,
     "monthly_budget_cents": 300000,
@@ -67,5 +79,6 @@ integer cents, unknown values as `null`):
 }
 ```
 
-End by telling the owner, in plain words, what was saved and that payments over their threshold
-will ask for their approval.
+End by telling the owner, in plain words, what was saved. Be exact about what is enforced today:
+payments over $1,000 ask for their approval, whatever threshold they chose. The threshold they
+gave is saved for later and not used yet.

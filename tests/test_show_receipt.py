@@ -3,6 +3,8 @@ import os
 import socket
 import subprocess
 import sys
+import time
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -147,6 +149,8 @@ def test_reports_only_this_sessions_bill(tmp_path: Path, listener: int) -> None:
     portal = tmp_path / "fixtures" / "portal"
     portal.mkdir(parents=True)
     (portal / "receipt_live_PO-2037.json").write_text(json.dumps(other))
+    future = time.time() + 60  # fresh, as if this run's verify wrote it too
+    os.utime(portal / "receipt_live_PO-2037.json", (future, future))
     stub_verify(tmp_path)
     write_log(tmp_path, payment(session="s-other", ts=50.0, bill_id="BILL-07"), payment())
     msg = system_message(run_hook(tmp_path, listener))
@@ -175,6 +179,38 @@ def test_plugin_tool_name_counts(tmp_path: Path, listener: int) -> None:
         tmp_path, {**payment(), "tool": "mcp__plugin_ledgers-receipts_bakery-local__pay_bill"}
     )
     assert "PO-2038" in system_message(run_hook(tmp_path, listener))
+
+
+def test_tool_name_with_trailing_newline_is_ignored(tmp_path: Path, listener: int) -> None:
+    stub_verify(tmp_path)
+    write_log(tmp_path, {**payment(), "tool": "mcp__bakery-local__pay_bill\n"})
+    assert run_hook(tmp_path, listener) == ""
+
+
+def test_control_characters_are_stripped(tmp_path: Path, listener: int) -> None:
+    title = "From \x1b[2J billing\x9b@flour\u202eco.example acct 9876543210"
+    hostile = {**RECEIPT, "checks": [{"id": "C8", "status": "blocked", "title": title}]}
+    stub_verify(tmp_path, hostile)
+    write_log(tmp_path, payment())
+    msg = system_message(run_hook(tmp_path, listener))
+    for bad in ("\x1b", "\x9b", "\u202e"):
+        assert bad not in msg
+    assert "9876543210" not in msg
+    assert "••3210" in msg
+    assert all(not unicodedata.category(ch).startswith("C") for ch in msg)
+
+
+def test_stale_receipt_is_not_reported(tmp_path: Path, listener: int) -> None:
+    portal = tmp_path / "fixtures" / "portal"
+    portal.mkdir(parents=True)
+    stale = portal / "receipt_live_PO-2038.json"
+    stale.write_text(json.dumps(RECEIPT))
+    past = time.time() - 3600
+    os.utime(stale, (past, past))
+    stub_verify(tmp_path, receipt=None)  # verify runs fine but skips the bill
+    write_log(tmp_path, payment())
+    msg = system_message(run_hook(tmp_path, listener))
+    assert msg == "Receipts: couldn't build the receipt (no receipt was written for bill BILL-08)."
 
 
 def test_matches_pretooluse_matcher() -> None:

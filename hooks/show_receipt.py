@@ -31,6 +31,8 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +40,8 @@ DEFAULT_PORT = 8000
 VERIFY_TIMEOUT_S = 20
 STATE_FILE = "reported.json"
 PASSING = ("verified", "pass")
-# Same pattern as the PreToolUse matcher in hooks/hooks.json.
+# Same pattern as the PreToolUse matcher in hooks/hooks.json. Used with fullmatch, because
+# `$` alone also accepts a trailing newline.
 PAY_BILL_TOOL = re.compile(r"^mcp__(plugin_ledgers-receipts_)?bakery-local__pay_bill$")
 
 
@@ -95,7 +98,7 @@ def newest_payment(log: Path, session: str) -> dict[str, Any] | None:
             if (
                 isinstance(entry, dict)
                 and entry.get("session") == session
-                and PAY_BILL_TOOL.match(str(entry.get("tool", "")))
+                and PAY_BILL_TOOL.fullmatch(str(entry.get("tool", "")))
             ):
                 newest = entry
     return newest
@@ -156,10 +159,14 @@ def run_verify(project: Path) -> None:
         raise BuildError(f"the verifier exited with code {done.returncode}")
 
 
-def find_receipt(project: Path, bill_id: str) -> dict[str, Any]:
-    """The receipt the verifier wrote for this bill (its bill.bill_id), from fixtures/portal."""
+def find_receipt(project: Path, bill_id: str, since: float) -> dict[str, Any]:
+    """The receipt the verifier wrote for this bill (its bill.bill_id), from fixtures/portal.
+    Only files modified at or after `since` (less 1s of slack) count, so a receipt left over
+    from an earlier run can't stand in when this run skipped the bill."""
     for path in sorted((project / "fixtures" / "portal").glob("receipt_live_*.json")):
         try:
+            if path.stat().st_mtime < since - 1:
+                continue
             receipt = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
@@ -170,8 +177,9 @@ def find_receipt(project: Path, bill_id: str) -> dict[str, Any]:
 
 
 def _safe(text: Any, limit: int = 120) -> str:
-    """One line of shown text: no control characters, any run of 5+ digits cut to its last 4."""
-    text = re.sub(r"[\x00-\x1f\x7f]", " ", str(text))
+    """One line of shown text: control, format and other category C* characters (C1 controls,
+    bidi overrides) become spaces, and any run of 5+ digits is cut to its last 4."""
+    text = "".join(" " if unicodedata.category(ch).startswith("C") else ch for ch in str(text))
     text = re.sub(r"\d{5,}", lambda m: "••" + m.group()[-4:], text)
     return text if len(text) <= limit else text[:limit] + "..."
 
@@ -219,10 +227,10 @@ def report(event: Any) -> str | None:
     if already_reported(session, ts):
         return None
     tool_input = payment.get("input") if isinstance(payment.get("input"), dict) else {}
+    started = time.time()
     run_verify(project)
-    text = message(
-        project, find_receipt(project, str(tool_input.get("bill_id", ""))), portal_port()
-    )
+    receipt = find_receipt(project, str(tool_input.get("bill_id", "")), started)
+    text = message(project, receipt, portal_port())
     try:
         mark_reported(session, ts)
     except OSError:

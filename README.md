@@ -13,6 +13,27 @@ Design mock with sample data (see `docs/mock/`). Feedback welcome.
 
 ![Receipt mock for Sweet Rose Bakery: an ISSUES FOUND verdict, a grid showing where each problem was caught, and the list of checks](docs/mock/receipt.png)
 
+## Install the plugin
+
+Receipts runs as a Claude Code plugin on top of Anthropic's Small Business plugin. In a
+Claude Code session, run these three commands in this order:
+
+```
+/plugin marketplace add anthropics/knowledge-work-plugins
+/plugin marketplace add ronaldon2023/ledgers-receipts
+/plugin install ledgers-receipts@the-ledgers
+```
+
+The first line adds the marketplace that holds the Small Business plugin. Installing
+Receipts then installs the Small Business plugin with it. If you skip that line, the install
+finishes with a warning that `small-business@knowledge-work-plugins` was not installed, and
+Receipts won't load until you add that marketplace.
+
+- No GitHub SSH key on your machine? Start Claude Code with `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1`
+  set, so the marketplaces download over HTTPS.
+- To get the latest version later, run `/plugin marketplace update the-ledgers`.
+- Check it worked: `/plugin` lists both `ledgers-receipts` and `small-business` as enabled.
+
 ## Team setup (about 5 minutes)
 
 You need Python 3.12 and git. On Windows, use WSL.

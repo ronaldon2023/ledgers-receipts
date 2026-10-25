@@ -279,7 +279,7 @@ def test_onboarding_steps_render_without_sidebar_links() -> None:
     for step, title in enumerate(titles):
         out = onboarding(step)
         assert title.replace("'", "&#39;") in out["main"]
-        assert "<a " not in out["side"]
+        assert out["side"] == ""
         assert f"step {step + 1} of 4" in out["main"]
 
 

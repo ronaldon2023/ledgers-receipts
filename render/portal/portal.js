@@ -364,7 +364,7 @@ Portal.onboarding = function (d, ui) {
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
   var brand = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>';
-  if (view === "onboarding") return { side: brand, main: Portal.onboarding(d, ui) };
+  if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });
   var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d)
     : view === "activities" ? Portal.activities(d, ui) : Portal.dashboard(d, ui);
@@ -401,6 +401,7 @@ if (typeof document !== "undefined") (function () {
     ui.view = view();
     var out = Portal.page(data, ui);
     side.innerHTML = out.side;
+    side.hidden = !out.side;
     app.innerHTML = out.main;
   }
   function set(p) {

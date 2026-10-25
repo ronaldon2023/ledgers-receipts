@@ -217,11 +217,12 @@ Portal.groups = function (feed, byOrder) {
 };
 Portal.feedHtml = function (feed, ui) {
   var esc = Portal.esc, byOrd = ui.feedView !== "time"; // By order is the default
-  var h = '<section aria-label="AI agent activities"><div class="sh"><div class="filters" role="group" aria-label="Filter">';
+  var h = '<section aria-label="AI agent activities"><div class="sh feedtop"><div class="filters" role="group" aria-label="Filter">';
   Portal.FILTERS.forEach(function (f) {
     h += '<button type="button" class="chip" data-filter="' + f[0] + '" aria-pressed="' + (ui.filter === f[0]) + '">' + esc(f[1]) + '</button>';
   });
-  h += '</div></div><div class="feedbar"><div class="viewtoggle" role="group" aria-label="Group activities">' +
+  // Filters on the left, the By order / By time switch on the right of the same row.
+  h += '</div><div class="viewtoggle" role="group" aria-label="Group activities">' +
     '<button type="button" class="seg" data-feedview="order" aria-pressed="' + byOrd + '">By order</button>' +
     '<button type="button" class="seg" data-feedview="time" aria-pressed="' + !byOrd + '">By time</button></div>' +
     '</div><div class="feed">';
@@ -254,14 +255,11 @@ Portal.dashboard = function (d, ui) {
   var waiting = cards.filter(function (c) { return c.level === "approve"; });
   var h = Portal.header("Good afternoon, " + f.owner);
   h += '<section aria-label="At a glance"><div class="glance">' +
-    '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + '</span></span>' +
-    '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div>' +
-    '<span class="d">' + pct + '% used</span></div>' +
+    '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + ' · ' + pct + '% used</span></span>' +
+    '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div></div>' +
     '<div class="tile"><span class="k">Operating balance</span><span class="n">' + esc(Portal.dollars(g.balance.balance_cents)) + '</span></div>' +
-    '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + waiting.length + '</span><span class="d">' +
-    (waiting.length ? waiting.map(function (c) { return esc(c.short || c.title); }).join("<br>") : "No approvals waiting") + '</span></div>' +
-    '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span>' +
-    '<span class="d">' + esc(g.run.blocked) + ' blocked by the guard · <a href="#activities">see all activities</a></span></div></div></section>';
+    '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + waiting.length + '</span></div>' +
+    '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span></div></div></section>';
   h += '<section aria-labelledby="attnh"><div class="sh"><h2 id="attnh">Needs your attention</h2><span>' +
     (cards.length ? cards.length + (cards.length === 1 ? " item" : " items") : "Nothing waiting") + '</span></div>';
   h += cards.length ? '<div class="attn">' + cards.map(function (c) { return Portal.card(f, c, ui); }).join("") + '</div>'

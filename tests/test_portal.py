@@ -277,8 +277,7 @@ def test_restock_order_card_needs_approval() -> None:
     assert "bakesupply.get_price · sku=SUG-CN-50 · quantity=3" in card
     assert ">Approve<" in card and "Decline" in card
     tile = html[html.index("Waiting on you") :]
-    assert tile.startswith('Waiting on you</span><span class="n">2<')
-    assert "Sugar order, $120.00" in tile
+    assert tile.startswith('Waiting on you</span><span class="n">2</span></div>')
 
 
 @needs_node
@@ -668,3 +667,16 @@ def test_passkey_only_on_onboarding_sign_in() -> None:
 def test_balance_matches_the_seed() -> None:
     assert ">$4,800<" in page(data("pending"))
     assert ">$4,000<" in page(data("paid"))
+
+
+@needs_node
+def test_cleaned_up_glance_tiles_and_activities_bar() -> None:
+    html = page(data("pending"), **CHECKED)
+    assert "of $3,000 · 98% used</span></span>" in html
+    assert "Sugar order, $120.00" not in html and "BILL-07, $800.00" not in html
+    assert "blocked by the guard" not in html and "see all activities" not in html
+    acts = page(data("stopped"), "activities")
+    row = acts[acts.index('<div class="sh feedtop">') :]
+    row = row[: row.index('<div class="feed">')]
+    assert row.index('class="filters"') < row.index('class="viewtoggle"')
+    assert 'class="feedbar"' not in acts

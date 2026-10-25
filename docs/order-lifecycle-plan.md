@@ -43,6 +43,10 @@ Findings on the merged work. Each one names the check that would catch it:
   and returns `ord_N` ids that nothing links to `PO-2041`. Check: a test that places PO-2041's lines through
   BakeSupply and joins the results to `orders`.
 
+Merged since this section was read (14:33–14:59, not reviewed here): PRs #12 (payment checks), #7 (plugin skeleton),
+#15 (approval hook), #24 (onboarding), #18 (DB checks), the `local-server` merge (both servers registered), and
+347248d (C4–C8 inside `pay_bill`). Next revision of §0 reads them.
+
 ## 1 · What this builds
 
 The bakery Monday task, run as an order lifecycle. Sweet Rose Bakery orders ingredients from a supplier, the
@@ -98,9 +102,9 @@ branch `docs/whiteboard`). The original phone photos show the door code and Wi-F
 | D7 | Payment-ready trigger in the demo: the owner asks. SessionStart also lists invoices due within N days | default | cron or launchd: Future |
 | D8 | Our plugin depends on and wraps the Claude for Small Business plugin (`small-business@knowledge-work-plugins`, v1.35.1 at 33d3dea). We use its skills: `smb-onboard`, `ap-processor` and `pay-the-bills` (which never sends money) and `inventory-planner`. We add the execution through MCP, the checks and the receipt. Install: `"dependencies": [{"name": "small-business", "marketplace": "knowledge-work-plugins"}]` in our `plugin.json`, plus `"allowCrossMarketplaceDependenciesOn": ["knowledge-work-plugins"]` in our `marketplace.json`. Installing ours installs theirs only when the user has already added the `anthropics/knowledge-work-plugins` marketplace; otherwise the dependency is skipped (plugin-dependencies.md:58, 89, 110; tested by the plugin session). **The install is three steps:** add the knowledge-work-plugins marketplace, add ours, install `ledgers-receipts`. There's no version range, because a range resolves against git tags (`small-business--v<ver>`) that their repo may not have (:51, 143). A plugin's `settings.json` honours only `agent` and `subagentStatusLine`, so deny rules ship on the install page as project settings, not in the plugin | Anthony, 13:25 (goal); tested 14:20 | Manual install instructions only: one more step for a non-developer owner |
 
-**Conflict to settle (D1):** `docs/PLAN.md` says "The server never checks policy. Blocking is the guard's job" and gives
-Ronaldo a PreToolUse `guard.py`. D1 moves policy checks into the MCP write tools instead. Anthony and Ronaldo decide;
-either way the check logic is the shared `checks/` library, so only the call site changes.
+**D1 as built (main at 347248d, 14:59):** `pay_bill` calls `checks/gate.py`'s `evaluate()`, which runs C4–C8, and on a
+block it refuses and saves nothing. That is D1's call site. Whether `docs/PLAN.md`'s guard hook stays alongside it is
+Ronaldo's call.
 
 ## 3 · Dependencies and interfaces
 
@@ -320,11 +324,16 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
     `BILL-<order id>`), `references_order`, `vendor_id`, and `amount_cents` from `total_cents`. `due_date` is a
     placeholder, the date part of the order's `created_at`. `from` and `received_at` are left out, because no
     supplier sent anything.
-  - **Open, the `bills` row behind it (Anthony, Ronaldo):** `pay_bill` needs a `bills` row (`payments.bill_id`
-    references `bills.id`), and `bills.from_addr` and `pay_to_account` are `NOT NULL`. Default: Ronaldo makes those
-    two columns nullable, so a stand-in row stores them as unknown. The alternative is to copy the vendor's
-    on-file email and account into them, which needs no schema change. But then the ledger shows supplier data
-    the supplier never sent, and C4 and C8 compare the file with itself.
+  - **The `bills` row behind it (settled 15:00, Anthony):** `pay_bill` needs a `bills` row (`payments.bill_id`
+    references `bills.id`). The stand-in row copies what already exists on file: `from_addr` is the vendor's
+    `vendors.email` and `pay_to_account` is `vendors.bank_account`. There's no schema change. Empty values
+    wouldn't work, because the gate on main (`checks/gate.py`, 347248d) blocks a blank account in C4 and a blank
+    sender in C8.
+    - Cost: on a stand-in, C8 and the bill half of C4 compare the file with itself, so they pass without proving
+      anything. The `pay_bill` `to_account` half of C4 still means something. That's why a stand-in receipt can't be
+      `VERIFIED` (below).
+    - Still open: which `bakery-local` tool writes the stand-in row. Only the server writes `bakery.db`, and the
+      agent has no tool that writes invoices. This goes with F4 (Luke, Owen, Ronaldo).
   - **The receipt shows the stand-in.** The `bill_received` event gets `source: "unverified"`, which the schema
     says the UI marks (Lana to confirm the website does). The schema's `bill` has `additionalProperties: false`, so there's no stand-in flag on the bill
     itself. Empty `from` and `received_at` are the stand-in's signature.

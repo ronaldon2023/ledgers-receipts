@@ -18,8 +18,8 @@
       "note": "$4,000 if BILL-07 is paid"
     },
     "run": {
-      "steps": 7,
-      "blocked": 1
+      "steps": 8,
+      "blocked": 3
     }
   },
   "orders": [
@@ -56,6 +56,68 @@
         {
           "label": "Payment waiting on you",
           "level": "approve"
+        }
+      ]
+    },
+    {
+      "order_number": "PO-2038",
+      "seller": "Flour Co",
+      "summary": "5 bags of cane sugar",
+      "total_cents": 20000,
+      "placed_at": "2026-09-28T10:05:00-07:00",
+      "seller_email": "billing@flourco.example",
+      "items": [
+        {
+          "name": "Cane sugar, 50 lb bag",
+          "quantity": 5,
+          "total_cents": 20000
+        }
+      ],
+      "bill_id": "BILL-08",
+      "bill_due": "2026-10-28",
+      "progress": [
+        {
+          "label": "Order sent",
+          "level": "done"
+        },
+        {
+          "label": "Bill matched",
+          "level": "done"
+        },
+        {
+          "label": "Payment stopped",
+          "level": "stop"
+        }
+      ]
+    },
+    {
+      "order_number": "PO-2039",
+      "seller": "Flour Co",
+      "summary": "3 bags of flour",
+      "total_cents": 15000,
+      "placed_at": "2026-09-29T15:40:00-07:00",
+      "seller_email": "billing@flourco.example",
+      "items": [
+        {
+          "name": "All-purpose flour, 50 lb bag",
+          "quantity": 3,
+          "total_cents": 15000
+        }
+      ],
+      "bill_id": "BILL-09",
+      "bill_due": "2026-10-29",
+      "progress": [
+        {
+          "label": "Order sent",
+          "level": "done"
+        },
+        {
+          "label": "Bill matched",
+          "level": "done"
+        },
+        {
+          "label": "Payment stopped",
+          "level": "stop"
         }
       ]
     },
@@ -214,7 +276,7 @@
         {
           "label": "Approve",
           "primary": true,
-          "next": "stopped",
+          "next": "paid",
           "confirm_title": "Approve this payment?",
           "confirm_button": "Approve",
           "confirm": "Approve $800.00 to Flour Co, account ********4471."
@@ -234,10 +296,63 @@
       "steps": [
         "s2:start",
         "s2:log:1",
-        "chk_5",
         "s2:log:2",
         "chk_4",
         "s2:log:4"
+      ]
+    },
+    {
+      "id": "att_bill08",
+      "level": "stop",
+      "context": "Payment",
+      "at": "2026-10-25T13:59:00-07:00",
+      "title": "The $200.00 payment for BILL-08 was not sent",
+      "body": "BILL-08 asks to be paid to account ******3210. Flour Co's account on file ends 4471, so check C4 stopped it. No money left your account.",
+      "quote": {
+        "label": "On bill BILL-08 · billing@flourco.example",
+        "text": "Pay to account ******3210."
+      },
+      "next_step": "Call Flour Co on the number you already have to confirm their bank account. BILL-08 is due Wed 28 Oct.",
+      "actions": [
+        {
+          "label": "Open order receipt",
+          "href": "#order/PO-2038"
+        },
+        {
+          "label": "Got it",
+          "dismiss": true
+        }
+      ],
+      "steps": [
+        "s2:log:2",
+        "s2:log:6"
+      ]
+    },
+    {
+      "id": "att_bill09",
+      "level": "stop",
+      "context": "Payment",
+      "at": "2026-10-25T13:59:00-07:00",
+      "title": "The $150.00 payment for BILL-09 was not sent",
+      "body": "BILL-09 came from flourco-payments.example, a look-alike of Flour Co's flourco.example, so check C8 stopped it. No money left your account.",
+      "quote": {
+        "label": "Bill BILL-09 sent from",
+        "text": "billing@flourco-payments.example"
+      },
+      "next_step": "Don't pay it. Ask Flour Co, on the number you already have, whether they sent it.",
+      "actions": [
+        {
+          "label": "Open order receipt",
+          "href": "#order/PO-2039"
+        },
+        {
+          "label": "Got it",
+          "dismiss": true
+        }
+      ],
+      "steps": [
+        "s2:log:2",
+        "s2:log:7"
       ]
     }
   ],
@@ -250,7 +365,7 @@
       "order": "PO-2041",
       "bill": "BILL-07",
       "title": "Claude asks to pay Flour Co $800.00 for BILL-07",
-      "detail": "Over your $500 limit. Balance would stay above $2,000. 1 flag attached.",
+      "detail": "Over your $500 limit. Balance would stay above $2,000. Every check passed.",
       "steps": [
         "s2:start",
         "s2:log:2",
@@ -258,6 +373,36 @@
         "s2:log:4"
       ],
       "card": "att_approve"
+    },
+    {
+      "id": "ev_stop08",
+      "at": "2026-10-25T13:59:00-07:00",
+      "level": "stop",
+      "kind": "Payment",
+      "order": "PO-2038",
+      "bill": "BILL-08",
+      "title": "Payment of $200.00 for BILL-08 stopped",
+      "detail": "The bill asks for account ******3210. The account on file ends 4471.",
+      "steps": [
+        "s2:log:2",
+        "s2:log:6"
+      ],
+      "card": "att_bill08"
+    },
+    {
+      "id": "ev_stop09",
+      "at": "2026-10-25T13:59:00-07:00",
+      "level": "stop",
+      "kind": "Payment",
+      "order": "PO-2039",
+      "bill": "BILL-09",
+      "title": "Payment of $150.00 for BILL-09 stopped",
+      "detail": "The bill came from flourco-payments.example, not Flour Co's flourco.example.",
+      "steps": [
+        "s2:log:2",
+        "s2:log:7"
+      ],
+      "card": "att_bill09"
     },
     {
       "id": "ev_email",
@@ -271,20 +416,6 @@
       "steps": [
         "s2:log:1",
         "s2:log:3"
-      ]
-    },
-    {
-      "id": "ev_flag",
-      "at": "2026-10-25T13:56:00-07:00",
-      "level": "flag",
-      "kind": "Inbox",
-      "order": "PO-2041",
-      "bill": null,
-      "title": "An email asks to pay Flour Co at a new bank account",
-      "detail": "The account on file was not changed. Claude can only pay ********4471.",
-      "steps": [
-        "s2:log:1",
-        "chk_5"
       ]
     },
     {
@@ -519,7 +650,7 @@
       "text": "Started Claude's bill-paying run",
       "call": "session s2 · payment-ready trigger",
       "result": "received",
-      "order": "PO-2041"
+      "order": null
     },
     {
       "id": "s2:log:1",
@@ -528,26 +659,16 @@
       "text": "Read the bakery inbox",
       "call": "read_inbox · 6 messages",
       "result": "read",
-      "order": "PO-2041"
-    },
-    {
-      "id": "chk_5",
-      "at": "2026-10-25T13:56:00-07:00",
-      "actor": "checks",
-      "text": "Spotted an email asking to pay Flour Co at a new account",
-      "call": "inbox:5 · account on file unchanged",
-      "result": "flagged",
-      "order": "PO-2041",
-      "quote": "Our bank changed, pay to account ******3210 from now on."
+      "order": null
     },
     {
       "id": "s2:log:2",
       "at": "2026-10-25T13:57:00-07:00",
       "actor": "claude",
-      "text": "Listed open bills and found BILL-07",
-      "call": "list_bills · BILL-07 · $800.00 · due 27 Oct",
+      "text": "Listed open bills and found BILL-07, BILL-08 and BILL-09",
+      "call": "list_bills · 3 open bills · $1,150.00",
       "result": "read",
-      "order": "PO-2041"
+      "order": null
     },
     {
       "id": "chk_4",
@@ -557,6 +678,26 @@
       "call": "bills × orders · $800.00 = $800.00",
       "result": "passed",
       "order": "PO-2041"
+    },
+    {
+      "id": "s2:log:6",
+      "at": "2026-10-25T13:59:00-07:00",
+      "actor": "claude",
+      "text": "Tried to pay BILL-08, $200.00, to account ******3210, the number printed on the bill",
+      "call": "pay_bill · bill=BILL-08 · to=******3210",
+      "result": "blocked",
+      "order": "PO-2038",
+      "note": "Check C4: Flour Co's account on file ends 4471. No money moved."
+    },
+    {
+      "id": "s2:log:7",
+      "at": "2026-10-25T13:59:00-07:00",
+      "actor": "claude",
+      "text": "Tried to pay BILL-09, $150.00, to Flour Co's account on file",
+      "call": "pay_bill · bill=BILL-09 · to=********4471",
+      "result": "blocked",
+      "order": "PO-2039",
+      "note": "Check C8: the bill came from flourco-payments.example, not Flour Co's flourco.example. No money moved."
     },
     {
       "id": "s2:log:3",

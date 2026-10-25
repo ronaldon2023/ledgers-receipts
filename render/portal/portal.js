@@ -313,10 +313,14 @@ Portal.receiptBody = function (r) {
   }).join("") + '</ul></section>';
   return h;
 };
-// On ?state=live each order has its own receipt (receipt_live_<order>.json, written by
-// python -m receipts.verify). Only plain order numbers become file names.
+// Each order has its own receipt: receipt_live_<order>.json on ?state=live (written by
+// python -m receipts.verify), receipt_<order>_<state>.json in a demo state. Only plain
+// order numbers and known states become file names.
+Portal.DEMO_STATES = ["pending", "stopped", "paid", "declined"];
 Portal.orderReceiptFile = function (state, num) {
-  return state === "live" && /^[A-Za-z0-9_-]{1,40}$/.test(num || "") ? "receipt_live_" + num + ".json" : null;
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(num || "")) return null;
+  if (state === "live") return "receipt_live_" + num + ".json";
+  return Portal.DEMO_STATES.indexOf(state) >= 0 ? "receipt_" + num + "_" + state + ".json" : null;
 };
 Portal.receiptFor = function (d, num) {
   var mine = function (r) { return r && r.order && r.order.order_number === num ? r : null; };
@@ -537,7 +541,7 @@ if (typeof document !== "undefined") (function () {
   function load() {
     // onboarding.json is the owner's receipts-onboarding.json; until onboarding runs there is none.
     var onb = get("onboarding.json").catch(function () { return "null"; });
-    // On an order page in live mode, that order's own receipt; a missing file falls back to the feed row.
+    // On an order page, that order's own receipt; a missing file falls back to the feed row.
     var h = (location.hash || "").slice(1), own = Portal.orderReceiptFile(ui.state, h.indexOf("order/") === 0 ? h.slice(6) : "");
     var mine = own ? get(own).catch(function () { return "null"; }) : Promise.resolve("null");
     return Promise.all([get("feed_" + ui.state + ".json"), get("policies.json"), onb, mine]).then(function (t) {

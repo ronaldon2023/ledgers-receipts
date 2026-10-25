@@ -8,7 +8,9 @@ At or under the threshold it prints nothing, which leaves the decision to the no
 The details come from bakery.db, opened read-only: env BAKERY_DB, else
 $CLAUDE_PROJECT_DIR/bakery.db. If the bill can't be read, it still asks and says so. A bad
 call or an error in this hook also asks; it never silently allows. Account numbers are shown
-as their last 4 characters only. Standard library only, so it runs on the system python3.
+as their last 4 characters only, and so is any run of 5+ digits echoed from the call. A bill id
+is shown with anything outside [A-Za-z0-9._-] replaced by "?", so it can't forge prompt lines.
+Standard library only, so it runs on the system python3.
 Runnable by hand: echo '{"tool_input": {...}}' | python3 hooks/approve_payment.py
 """
 
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -40,8 +43,18 @@ def _normal(account: str) -> str:
 
 
 def _clip(text: Any, limit: int = 80) -> str:
-    text = str(text)
+    """Echoed free text, with any run of 5+ digits cut to its last 4, clipped to `limit`."""
+    text = re.sub(r"\d{5,}", lambda m: "\u2026" + m.group()[-4:], str(text))
     return text if len(text) <= limit else text[:limit] + "..."
+
+
+def _show_bill_id(tool_input: dict[str, Any]) -> str:
+    """The bill id as safe to show: only [A-Za-z0-9._-], so it can't forge prompt lines."""
+    if "bill_id" not in tool_input:
+        return "(none given)"
+    raw = str(tool_input["bill_id"])
+    safe = re.sub(r"[^A-Za-z0-9._-]", "?", raw)
+    return _clip(safe) + ("" if safe == raw and raw else " (malformed bill id)")
 
 
 def threshold_cents() -> int | None:
@@ -83,7 +96,7 @@ def lookup_bill(bill_id: str) -> dict[str, Any] | None:
 def reason(tool_input: dict[str, Any], threshold: int | None) -> str:
     """The plain-text reason the owner sees in the permission prompt."""
     amount = tool_input.get("amount_cents")
-    bill_id = _clip(tool_input.get("bill_id", "(none given)"))
+    bill_id = _show_bill_id(tool_input)
     account = str(tool_input.get("to_account") or "")
     lines = []
     if isinstance(amount, int) and not isinstance(amount, bool):

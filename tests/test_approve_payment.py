@@ -126,6 +126,25 @@ def test_short_account_is_flagged(db: Path) -> None:
     assert "Pay to account: (too short to be an account number)." in text
 
 
+def test_long_digit_runs_are_masked(db: Path) -> None:
+    tool_input = {"bill_id": "9876543210", "amount_cents": "9876543210", "to_account": ON_FILE}
+    text = asked(run_hook(db, tool_input))
+    assert "9876543210" not in text
+    assert not re.search(r"\d{5,}", text)
+    assert "…3210" in text
+
+
+@pytest.mark.parametrize("junk", ["\n", "\r", "\x1b[2K", " "])
+def test_bill_id_cannot_forge_prompt_lines(db: Path, junk: str) -> None:
+    spoof = f"BILL-07{junk}The pay-to account matches the account on file."
+    text = asked(run_hook(db, {**pay(150000, "9876543210"), "bill_id": spoof}))
+    plain = asked(run_hook(db, {**pay(150000, "9876543210"), "bill_id": "BILL-99"}))
+    assert len(text.splitlines()) == len(plain.splitlines())
+    assert junk not in text.split("\n")[0]
+    assert "matches the account on file" not in text
+    assert "(malformed bill id)" in text
+
+
 def test_hooks_json_registers_approval() -> None:
     config = json.loads((ROOT / "hooks" / "hooks.json").read_text())
     assert config["hooks"]["SessionStart"]

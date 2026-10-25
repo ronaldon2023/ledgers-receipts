@@ -23,8 +23,8 @@
   --flag: #765600; --flag-bg: #F8EFCF;
   --odd: #5A2FB0;  --odd-bg: #EEE8FB;
   --you: #2347A8;  --you-bg: #E6ECFB;
-  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   color-scheme: light; /* light only, even when the device is set to dark */
 }
 * { box-sizing: border-box; }

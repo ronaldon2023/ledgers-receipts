@@ -261,6 +261,187 @@ def test_env_threshold_beats_onboarding(db: Path) -> None:
     assert run_hook(db, pay(80000), RECEIPTS_APPROVAL_CENTS="200000") == ""
 
 
+CARD_Q = "Pay $800.00 to Flour Co, account ending 4471, for bill BILL-07?"
+OPTIONS = [
+    {"label": "Approve", "description": "Send this payment now."},
+    {"label": "Decline", "description": "Don't pay it. Nothing is sent."},
+]
+
+
+def card(
+    question: str,
+    answer: str,
+    n: int = 1,
+    tool: str = "AskUserQuestion",
+    extra: tuple[dict, ...] = (),
+    **fields: object,
+) -> list[dict]:
+    """A card Claude asked (assistant tool_use) and the answer Claude Code recorded for it.
+
+    `fields` override the card question's own fields; `extra` adds further questions after it.
+    """
+    asked_q = {"header": "Payment", "question": question, "multiSelect": False, "options": OPTIONS}
+    questions = [{**asked_q, **fields}, *extra]
+    call = {
+        "type": "tool_use",
+        "id": f"toolu_ask{n}",
+        "name": tool,
+        "input": {"questions": questions},
+    }
+    result = {"type": "tool_result", "tool_use_id": f"toolu_ask{n}", "content": "answered"}
+    answers = {question: answer, **{q["question"]: "Yes" for q in extra}}
+    return [
+        {"type": "assistant", "message": {"role": "assistant", "content": [call]}},
+        {
+            "type": "user",
+            "message": {"role": "user", "content": [result]},
+            "toolUseResult": {"questions": questions, "answers": answers},
+        },
+    ]
+
+
+HELLO = {"type": "user", "message": {"role": "user", "content": "Pay my flour bill."}}
+
+
+def pay_call(tool_input: dict, call_id: str) -> dict:
+    block = {"type": "tool_use", "id": call_id, "name": TOOL, "input": tool_input}
+    return {"type": "assistant", "message": {"role": "assistant", "content": [block]}}
+
+
+def run_card(db: Path, tool_input: dict, entries: list[dict] | None) -> dict:
+    """Run the hook with a transcript (None: no transcript_path) and return its decision."""
+    event = {"hook_event_name": "PreToolUse", "tool_name": TOOL, "tool_input": tool_input}
+    event["tool_use_id"] = "toolu_now"
+    if entries is not None:
+        path = db.parent / "transcript.jsonl"
+        path.write_text("not json\n" + "\n".join(json.dumps(e) for e in entries) + "\n")
+        event["transcript_path"] = str(path)
+    out = run_raw(db, json.dumps(event))
+    return json.loads(out)["hookSpecificOutput"] if out else {}
+
+
+def given_card(decision: dict) -> dict:
+    """The AskUserQuestion input a deny reason tells Claude to use."""
+    assert decision["permissionDecision"] == "deny"
+    (line,) = [x for x in decision["permissionDecisionReason"].splitlines() if x.startswith("{")]
+    (question,) = json.loads(line)["questions"]
+    return question
+
+
+def test_approved_card_allows(db: Path) -> None:
+    # The current call may already be in the transcript; it must not use up its own card.
+    entries = [*card(CARD_Q, "Approve"), pay_call(pay(80000), "toolu_now")]
+    assert run_card(db, pay(80000), entries)["permissionDecision"] == "allow"
+
+
+def test_no_card_denies_with_the_exact_card(db: Path) -> None:
+    decision = run_card(db, pay(80000), [pay_call(pay(1), "toolu_other_bill")])
+    assert given_card(decision) == {
+        "header": "Payment",
+        "question": CARD_Q,
+        "multiSelect": False,
+        "options": OPTIONS,
+    }
+    assert "No approval card" in decision["permissionDecisionReason"]
+
+
+def test_the_card_the_deny_gives_then_approved_allows(db: Path) -> None:
+    for tool_input in [pay(80000), pay(150000, "9876543210")]:
+        question = given_card(run_card(db, tool_input, [HELLO]))["question"]
+        entries = card(question, "Approve")
+        assert run_card(db, tool_input, entries)["permissionDecision"] == "allow"
+
+
+def test_declined_denies(db: Path) -> None:
+    decision = run_card(db, pay(80000), card(CARD_Q, "Decline"))
+    assert "The owner declined it." in decision["permissionDecisionReason"]
+    assert given_card(decision)["question"] == CARD_Q
+
+
+def test_wrong_account_denies(db: Path) -> None:
+    decision = run_card(db, pay(80000, "9876543210"), card(CARD_Q, "Approve"))
+    question = given_card(decision)["question"]
+    assert "account ending 3210" in question
+    assert "Warning: that isn't the account on file (ending 4471)." in question
+    assert "9876543210" not in decision["permissionDecisionReason"]
+
+
+def test_same_last4_other_account_denies(db: Path) -> None:
+    decision = run_card(db, pay(80000, "999999994471"), card(CARD_Q, "Approve"))
+    assert "isn't the account on file" in given_card(decision)["question"]
+
+
+def test_wrong_amount_denies(db: Path) -> None:
+    decision = run_card(db, pay(8000000), card(CARD_Q, "Approve"))
+    assert given_card(decision)["question"].startswith("Pay $80,000.00 to Flour Co")
+
+
+def test_approval_used_once(db: Path) -> None:
+    entries = [*card(CARD_Q, "Approve"), pay_call(pay(80000), "toolu_paid")]
+    decision = run_card(db, pay(80000), entries)
+    assert "No approval card" in decision["permissionDecisionReason"]
+
+
+def test_latest_card_wins(db: Path) -> None:
+    entries = [*card(CARD_Q, "Approve", 1), *card(CARD_Q, "Decline", 2)]
+    assert run_card(db, pay(80000), entries)["permissionDecision"] == "deny"
+
+
+def test_header_fits_twelve_characters_and_old_header_no_longer_counts(db: Path) -> None:
+    assert len(given_card(run_card(db, pay(80000), [HELLO]))["header"]) <= 12
+    assert run_card(db, pay(80000), card(CARD_Q, "Approve"))["permissionDecision"] == "allow"
+    old = card(CARD_Q, "Approve", header="Approve payment")
+    assert "No approval card" in run_card(db, pay(80000), old)["permissionDecisionReason"]
+
+
+SWAPPED = [
+    {"label": "Approve", "description": "Hold the payment; nothing is sent."},
+    {"label": "Decline", "description": "Send this payment now."},
+]
+OTHER_Q = {"header": "Payment", "question": "Pay BILL-09 too?", "options": OPTIONS}
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"options": SWAPPED},
+        {"options": OPTIONS[:1]},
+        {"options": [*OPTIONS, {"label": "Later", "description": "Ask me tomorrow."}]},
+        {"multiSelect": True},
+        {"extra": (OTHER_Q,)},
+        {"extra": ({**OTHER_Q, "header": "Note"},)},
+    ],
+)
+def test_card_that_isnt_exactly_the_card_denies(db: Path, fields: dict) -> None:
+    decision = run_card(db, pay(80000), card(CARD_Q, "Approve", **fields))
+    assert decision["permissionDecision"] == "deny"
+    assert "isn't exactly the card" in decision["permissionDecisionReason"]
+
+
+def test_answer_not_from_ask_user_question_denies(db: Path) -> None:
+    entries = card(CARD_Q, "Approve", tool="mcp__bakery-local__read_inbox")
+    assert run_card(db, pay(80000), entries)["permissionDecision"] == "deny"
+
+
+def test_under_threshold_silent(db: Path) -> None:
+    assert run_card(db, {**pay(15000), "bill_id": "BILL-09"}, [HELLO]) == {}
+
+
+@pytest.mark.parametrize("where", [None, "absent", "directory", "garbage"])
+def test_missing_transcript_asks(db: Path, where: str | None) -> None:
+    event = {"hook_event_name": "PreToolUse", "tool_name": TOOL, "tool_input": pay(80000)}
+    if where is not None:
+        path = db.parent / "transcript.jsonl"
+        if where == "directory":
+            path.mkdir()
+        elif where == "garbage":
+            path.write_text("{torn\n[1, 2]\n")
+        event["transcript_path"] = str(path)
+    text = asked(run_raw(db, json.dumps(event)))
+    assert "$800.00" in text
+    assert "This prompt decides." in text
+
+
 def test_receipts_onboarding_env_picks_the_file(db: Path, tmp_path: Path) -> None:
     onboard(db.parent, {"approval_threshold_cents": 500000})
     elsewhere = tmp_path / "elsewhere"

@@ -68,10 +68,15 @@ def items_add_up(r: dict) -> Result:
 def bill_matches_order(r: dict) -> Result:
     order, bill = r["order"], r["bill"]
     if bill is None:
+        received = next((e["status"] for e in r["events"] if e["stage"] == "bill_received"), None)
+        inputs = {"bill": None, "payment.status": r["payment"]["status"], "bill_received": received}
         if r["payment"]["status"] == "sent":
             title = f"A payment was sent, but order {order['order_number']} has no bill"
-            return Result("PAY-BILL-ORDER", "fail", title, {"bill": None})
-        return Result("PAY-BILL-ORDER", "skip", "No bill yet", {"bill": None})
+        elif received == "done":
+            title = f"The events say a bill arrived, but order {order['order_number']} has none"
+        else:
+            return Result("PAY-BILL-ORDER", "skip", "No bill yet", inputs)
+        return Result("PAY-BILL-ORDER", "fail", title, inputs)
     inputs = {
         "bill.references_order": bill["references_order"],
         "order.order_number": order["order_number"],

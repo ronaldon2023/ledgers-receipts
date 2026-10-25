@@ -118,6 +118,14 @@ def test_unbilled_order_skips_bill_checks():
     assert s["PAY-BILL-ORDER"] == s["PAY-AMOUNT"] == s["PAY-ON-TIME"] == "skip"
 
 
+@pytest.mark.parametrize("receipt", [blocked, unbilled])
+def test_dropped_bill_fails_when_events_say_it_arrived(receipt):
+    r = receipt()
+    r["bill"] = None
+    event(r, "bill_received").update(status="done", at="2026-10-21T16:30:00-07:00")
+    assert {k for k, v in statuses(r).items() if v == "fail"} == {"PAY-BILL-ORDER"}
+
+
 def test_subtotal_and_tax_are_optional():
     r = paid()
     del r["order"]["subtotal_cents"], r["order"]["tax_cents"]

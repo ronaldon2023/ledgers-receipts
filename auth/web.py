@@ -1,6 +1,6 @@
-"""Sign up and sign in with a passkey -- no password anywhere, no account
-id typed to sign in (a discoverable credential's `user_handle` says which
-account it is).
+"""Sign up, sign in with a passkey, and manage your registered passkeys
+-- no password anywhere, no account id typed to sign in (a discoverable
+credential's `user_handle` says which account it is).
 
 Uses the browser's modern WebAuthn JSON helpers (`PublicKeyCredential
 .parseCreationOptionsFromJSON` / `.toJSON()`), which line up with
@@ -16,7 +16,7 @@ from __future__ import annotations
 import secrets
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from fido2.webauthn import AuthenticationResponse, RegistrationResponse
 from pydantic import BaseModel
@@ -29,9 +29,22 @@ from auth.webauthn import WebAuthnError
 # needs to survive a server restart.
 _pending_registrations: dict[str, dict] = {}
 _pending_logins: dict[str, dict] = {}
+_pending_added_passkeys: dict[str, dict] = {}
 
 # session_token -> account_id, issued at sign-in.
 _sessions: dict[str, str] = {}
+
+
+def _account_from_session(authorization: str | None):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "missing bearer session token")
+    account_id = _sessions.get(authorization[7:].strip())
+    if not account_id:
+        raise HTTPException(401, "invalid or expired session")
+    account = shared.accounts.by_id(account_id)
+    if account is None:
+        raise HTTPException(401, "account no longer exists")
+    return account
 
 
 def build_auth_app() -> FastAPI:
@@ -44,6 +57,10 @@ def build_auth_app() -> FastAPI:
     @app.get("/login", response_class=HTMLResponse)
     def login_page() -> str:
         return _LOGIN_HTML
+
+    @app.get("/security", response_class=HTMLResponse)
+    def security_page() -> str:
+        return _SECURITY_HTML
 
     @app.post("/api/signup/begin")
     def signup_begin(body: _SignupBeginRequest) -> dict:
@@ -109,6 +126,57 @@ def build_auth_app() -> FastAPI:
             "display_name": account.display_name,
         }
 
+    @app.get("/api/security/passkeys")
+    def list_passkeys(authorization: str | None = Header(default=None)) -> dict:
+        account = _account_from_session(authorization)
+        creds = shared.auth.store.for_account(account.account_id)
+        return {
+            "passkeys": [
+                {
+                    "credential_id": c.credential_id_b64,
+                    "name": c.name,
+                    "created_at": c.created_at,
+                    "last_used_at": c.last_used_at,
+                }
+                for c in creds
+            ]
+        }
+
+    @app.post("/api/security/passkeys/begin")
+    def add_passkey_begin(authorization: str | None = Header(default=None)) -> dict:
+        account = _account_from_session(authorization)
+        options, state = shared.auth.register_begin(account.account_id, account.display_name)
+        add_id = uuid.uuid4().hex
+        _pending_added_passkeys[add_id] = {"account_id": account.account_id, "fido_state": state}
+        return {"add_id": add_id, "options": dict(options)}
+
+    @app.post("/api/security/passkeys/complete")
+    def add_passkey_complete(body: _AddPasskeyCompleteRequest) -> dict:
+        pending = _pending_added_passkeys.pop(body.add_id, None)
+        if pending is None:
+            raise HTTPException(400, "unknown or expired passkey registration")
+        try:
+            response = RegistrationResponse.from_dict(body.credential)
+            cred = shared.auth.register_complete(
+                pending["account_id"], pending["fido_state"], response, name=body.name
+            )
+        except Exception as exc:  # noqa: BLE001 - surface the real reason to the owner
+            raise HTTPException(400, f"passkey registration failed: {exc}") from None
+        return {"ok": True, "credential_id": cred.credential_id_b64, "name": cred.name}
+
+    @app.post("/api/security/passkeys/{credential_id}/remove")
+    def remove_passkey(
+        credential_id: str, authorization: str | None = Header(default=None)
+    ) -> dict:
+        account = _account_from_session(authorization)
+        remaining = shared.auth.store.for_account(account.account_id)
+        if len(remaining) <= 1:
+            raise HTTPException(400, "can't remove your last passkey -- you'd be locked out")
+        ok = shared.auth.store.remove(account.account_id, credential_id)
+        if not ok:
+            raise HTTPException(404, "unknown passkey")
+        return {"ok": True}
+
     return app
 
 
@@ -124,6 +192,12 @@ class _SignupCompleteRequest(BaseModel):
 class _LoginCompleteRequest(BaseModel):
     login_id: str
     credential: dict
+
+
+class _AddPasskeyCompleteRequest(BaseModel):
+    add_id: str
+    credential: dict
+    name: str | None = None
 
 
 _STYLE = """
@@ -177,6 +251,15 @@ input[type=text]:focus{border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in
 .hint{font-size:12.5px;color:var(--muted);margin:0}
 .center{display:grid;gap:14px;text-align:center}
 a{color:var(--ink)}
+.list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:12px 14px;border:1px solid var(--rule);border-radius:10px;background:var(--panel)}
+.item .name{font:600 14px var(--sans);color:var(--ink)}
+.item .desc{font-size:12.5px;color:var(--muted);margin-top:2px}
+.revokebtn{padding:5px 10px;font:600 11px var(--sans);color:var(--bad);background:var(--bad-bg);
+  border:none;border-radius:999px;cursor:pointer}
+.revokebtn:hover{opacity:.85}
+.revokebtn:disabled{opacity:.4;cursor:default}
 """
 
 
@@ -221,7 +304,7 @@ go.onclick = async () => {
       body: JSON.stringify({registration_id: begin.registration_id, credential: credential.toJSON()})}).then(r => r.json());
     if (!complete.session_token) throw new Error(complete.detail || JSON.stringify(complete));
     sessionStorage.setItem('ledger_session', complete.session_token);
-    window.location.href = '/login';
+    window.location.href = '/security';
   } catch (err) {
     error.textContent = "Couldn't register: " + (err.message || err);
     error.classList.add('show');
@@ -260,6 +343,7 @@ go.onclick = async () => {
       .then(r => r.json());
     if (!complete.session_token) throw new Error(complete.detail || JSON.stringify(complete));
     sessionStorage.setItem('ledger_session', complete.session_token);
+    window.location.href = '/security';
   } catch (err) {
     error.textContent = "Couldn't sign in: " + (err.message || err);
     error.classList.add('show');
@@ -271,6 +355,92 @@ go.onclick = async () => {
 """
 
 _LOGIN_HTML = _page("Sign in", _LOGIN_BODY, _LOGIN_SCRIPT)
+
+
+_SECURITY_BODY = """
+<h1>Your passkeys</h1>
+<p class="lede">Anyone with one of these can sign in as you. Remove any you don't recognize.</p>
+<div class="banner bad" id="error"></div>
+<ul class="list" id="passkeys"><li class="hint">Loading…</li></ul>
+<div>
+  <label for="new-name">Name this passkey (optional)</label>
+  <input type="text" id="new-name" placeholder="e.g. &quot;Work laptop&quot;">
+</div>
+<button class="btn" id="add"><span class="spin"></span><span class="label">Add a passkey</span></button>
+<p class="hint center"><a href="#" id="signout-link">Sign out</a></p>
+"""
+
+_SECURITY_SCRIPT = """
+const error = document.getElementById('error');
+const session = sessionStorage.getItem('ledger_session');
+if (!session) { window.location.href = '/login'; }
+
+function fmt(ts) { return ts ? new Date(ts).toLocaleString() : 'never'; }
+
+function row(p) {
+  return `<li class="item"><div><div class="name">${p.name}</div>
+    <div class="desc">Added ${fmt(p.created_at)} · last used ${fmt(p.last_used_at)}</div></div>
+    <button class="revokebtn" data-id="${p.credential_id}">Remove</button></li>`;
+}
+
+async function load() {
+  const res = await fetch('/api/security/passkeys', {headers: {authorization: 'Bearer ' + session}});
+  if (!res.ok) { sessionStorage.removeItem('ledger_session'); window.location.href = '/login'; return; }
+  const data = await res.json();
+  document.getElementById('passkeys').innerHTML = data.passkeys.map(row).join('');
+  document.querySelectorAll('.revokebtn').forEach(btn => btn.onclick = async () => {
+    btn.disabled = true;
+    const res = await fetch(`/api/security/passkeys/${btn.dataset.id}/remove`,
+      {method: 'POST', headers: {authorization: 'Bearer ' + session}});
+    if (!res.ok) {
+      error.textContent = (await res.json()).detail;
+      error.classList.add('show');
+      btn.disabled = false;
+      return;
+    }
+    load();
+  });
+}
+load().catch(err => {
+  error.textContent = "Couldn't load passkeys: " + (err.message || err);
+  error.classList.add('show');
+});
+
+document.getElementById('add').onclick = async () => {
+  const btn = document.getElementById('add');
+  error.classList.remove('show');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  try {
+    const name = document.getElementById('new-name').value.trim() || null;
+    const begin = await fetch('/api/security/passkeys/begin',
+      {method: 'POST', headers: {authorization: 'Bearer ' + session}}).then(r => r.json());
+    const options = PublicKeyCredential.parseCreationOptionsFromJSON(begin.options.publicKey);
+    const credential = await navigator.credentials.create({publicKey: options});
+    const complete = await fetch('/api/security/passkeys/complete', {method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({add_id: begin.add_id, credential: credential.toJSON(), name})})
+      .then(r => r.json());
+    if (!complete.ok) throw new Error(complete.detail || JSON.stringify(complete));
+    document.getElementById('new-name').value = '';
+    load();
+  } catch (err) {
+    error.textContent = "Couldn't add passkey: " + (err.message || err);
+    error.classList.add('show');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('signout-link').onclick = (e) => {
+  e.preventDefault();
+  sessionStorage.removeItem('ledger_session');
+  window.location.href = '/login';
+};
+"""
+
+_SECURITY_HTML = _page("Your passkeys", _SECURITY_BODY, _SECURITY_SCRIPT)
 
 
 if __name__ == "__main__":

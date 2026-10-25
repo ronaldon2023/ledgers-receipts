@@ -268,22 +268,34 @@ OPTIONS = [
 ]
 
 
-def card(question: str, answer: str, n: int = 1, tool: str = "AskUserQuestion") -> list[dict]:
-    """A card Claude asked (assistant tool_use) and the answer Claude Code recorded for it."""
-    asked_q = {"header": "Approve payment", "question": question, "options": OPTIONS}
+def card(
+    question: str,
+    answer: str,
+    n: int = 1,
+    tool: str = "AskUserQuestion",
+    extra: tuple[dict, ...] = (),
+    **fields: object,
+) -> list[dict]:
+    """A card Claude asked (assistant tool_use) and the answer Claude Code recorded for it.
+
+    `fields` override the card question's own fields; `extra` adds further questions after it.
+    """
+    asked_q = {"header": "Payment", "question": question, "multiSelect": False, "options": OPTIONS}
+    questions = [{**asked_q, **fields}, *extra]
     call = {
         "type": "tool_use",
         "id": f"toolu_ask{n}",
         "name": tool,
-        "input": {"questions": [asked_q]},
+        "input": {"questions": questions},
     }
     result = {"type": "tool_result", "tool_use_id": f"toolu_ask{n}", "content": "answered"}
+    answers = {question: answer, **{q["question"]: "Yes" for q in extra}}
     return [
         {"type": "assistant", "message": {"role": "assistant", "content": [call]}},
         {
             "type": "user",
             "message": {"role": "user", "content": [result]},
-            "toolUseResult": {"questions": [asked_q], "answers": {question: answer}},
+            "toolUseResult": {"questions": questions, "answers": answers},
         },
     ]
 
@@ -325,7 +337,7 @@ def test_approved_card_allows(db: Path) -> None:
 def test_no_card_denies_with_the_exact_card(db: Path) -> None:
     decision = run_card(db, pay(80000), [pay_call(pay(1), "toolu_other_bill")])
     assert given_card(decision) == {
-        "header": "Approve payment",
+        "header": "Payment",
         "question": CARD_Q,
         "multiSelect": False,
         "options": OPTIONS,
@@ -373,6 +385,37 @@ def test_approval_used_once(db: Path) -> None:
 def test_latest_card_wins(db: Path) -> None:
     entries = [*card(CARD_Q, "Approve", 1), *card(CARD_Q, "Decline", 2)]
     assert run_card(db, pay(80000), entries)["permissionDecision"] == "deny"
+
+
+def test_header_fits_twelve_characters_and_old_header_no_longer_counts(db: Path) -> None:
+    assert len(given_card(run_card(db, pay(80000), [HELLO]))["header"]) <= 12
+    assert run_card(db, pay(80000), card(CARD_Q, "Approve"))["permissionDecision"] == "allow"
+    old = card(CARD_Q, "Approve", header="Approve payment")
+    assert "No approval card" in run_card(db, pay(80000), old)["permissionDecisionReason"]
+
+
+SWAPPED = [
+    {"label": "Approve", "description": "Hold the payment; nothing is sent."},
+    {"label": "Decline", "description": "Send this payment now."},
+]
+OTHER_Q = {"header": "Payment", "question": "Pay BILL-09 too?", "options": OPTIONS}
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"options": SWAPPED},
+        {"options": OPTIONS[:1]},
+        {"options": [*OPTIONS, {"label": "Later", "description": "Ask me tomorrow."}]},
+        {"multiSelect": True},
+        {"extra": (OTHER_Q,)},
+        {"extra": ({**OTHER_Q, "header": "Note"},)},
+    ],
+)
+def test_card_that_isnt_exactly_the_card_denies(db: Path, fields: dict) -> None:
+    decision = run_card(db, pay(80000), card(CARD_Q, "Approve", **fields))
+    assert decision["permissionDecision"] == "deny"
+    assert "isn't exactly the card" in decision["permissionDecisionReason"]
 
 
 def test_answer_not_from_ask_user_question_denies(db: Path) -> None:

@@ -7,17 +7,30 @@ the normal rules. Over it, the owner approves in chat with an approval card:
 - The hook reads the session transcript (the event's transcript_path), where Claude Code
   records the owner's AskUserQuestion answers. Only an answer whose tool_result points at an
   AskUserQuestion tool_use counts, so another tool's output can't pose as one.
-- If, after the last earlier pay_bill call for this bill, the latest card with header
-  "Approve payment" and exactly this payment's question (see card_question) was answered
-  "Approve", it prints "allow". One approval releases one payment.
+- If, after the last earlier pay_bill call for this bill in the transcript, the latest card
+  with header "Payment" is exactly this payment's card and was answered "Approve", it prints
+  "allow".
 - Otherwise it prints "deny", and the reason tells Claude the exact card to ask with.
 - A transcript it can't read, or with no usable entries, a malformed call, or an error in this
   hook prints "ask": Claude Code's own permission prompt decides, so it never silently allows.
 
-The card question names the amount, the vendor, the pay-to account's last 4 and the bill, plus
-any warning (account not on file, amount differs from the bill, already paid). A card counts
-only when its question is that exact text (whitespace aside), so an approval for $800.00 or
-account 4471 can't release $8,000.00 or account 3210. The ask reason is the payment details.
+Exactly this payment's card means: the answer holds one question, multiSelect false (or left
+out), the options Approve and Decline with exactly CARD_OPTIONS' labels and descriptions, and
+the question text card_question builds (whitespace aside). That text names the amount, the
+vendor, the pay-to account's last 4 and the bill, plus any warning (account not on file, amount
+differs from the bill, already paid), so an approval for $800.00 or account 4471 can't release
+$8,000.00 or account 3210. Any other "Payment" card denies. The ask reason is the payment details.
+
+What one approval releases: a pay_bill on the same bill in the main transcript after the card
+uses it up. It does not stop two pay_bill calls that both reach this hook before either payment
+is saved (parallel calls in one message, or a subagent's call, which isn't in the main
+transcript): one Approve can release both. Once a payment is saved the card question changes
+("Already paid"), and the bakery server's check C7 refuses any payment on a bill already paid,
+so the gap is the moment before the first payment is written.
+
+Security limit: the transcript is a file Claude could edit. The approval holds only while
+Write, Edit and Bash outside the project folder still need the owner's yes, as they do in the
+default permission mode.
 
 The threshold, in cents: env RECEIPTS_APPROVAL_CENTS when set (a non-number makes every payment
 ask); else payment_rules.approval_threshold_cents in the onboarding answers (env
@@ -221,7 +234,7 @@ def reason(tool_input: dict[str, Any], threshold: int | None, source: str, paid:
     return "\n".join(lines)
 
 
-CARD_HEADER = "Approve payment"
+CARD_HEADER = "Payment"  # AskUserQuestion's description caps headers at 12 characters
 APPROVE, DECLINE = "Approve", "Decline"
 CARD_OPTIONS = [
     {"label": APPROVE, "description": "Send this payment now."},
@@ -286,8 +299,8 @@ def _blocks(entry: dict[str, Any]) -> list[dict[str, Any]]:
 def card_answer(entries: list[dict[str, Any]], bill_id: str, question: str, this_call: Any) -> str:
     """The owner's answer to the latest matching card since the last pay_bill for this bill.
 
-    Returns the chosen label, "" when there is no matching card, or "other card" when a card
-    with the header was answered after that pay_bill but asked a different question. Only
+    Returns the chosen label, "" when there is no card, or "other card" when the latest answer
+    with the header after that pay_bill isn't exactly this payment's card (_is_card). Only
     answers Claude Code recorded for an AskUserQuestion tool_use count.
     """
     asks: set[str] = set()
@@ -315,16 +328,28 @@ def card_answer(entries: list[dict[str, Any]], bill_id: str, question: str, this
         answers, questions = result.get("answers"), result.get("questions")
         if not ids & asks or not isinstance(answers, dict) or not isinstance(questions, list):
             continue
-        for q in questions:
-            if not isinstance(q, dict) or q.get("header") != CARD_HEADER:
-                continue
-            text = str(q.get("question", ""))
-            if " ".join(text.split()) != want:
-                found = "other card"
-            else:
-                chosen = answers.get(text)
-                found = chosen if isinstance(chosen, str) else "unanswered"
+        if not any(isinstance(q, dict) and q.get("header") == CARD_HEADER for q in questions):
+            continue  # some other question, not an approval card
+        q = questions[0]
+        if len(questions) != 1 or not _is_card(q, want):
+            found = "other card"
+            continue
+        chosen = answers.get(q["question"])
+        found = chosen if isinstance(chosen, str) else "unanswered"
     return found
+
+
+def _is_card(q: dict[str, Any], want: str) -> bool:
+    """Whether a recorded question is exactly the card for this payment (see the docstring)."""
+    text, options = q.get("question"), q.get("options")
+    if not isinstance(text, str) or " ".join(text.split()) != want:
+        return False
+    if q.get("header") != CARD_HEADER or q.get("multiSelect", False) is not False:
+        return False
+    if not isinstance(options, list) or not all(isinstance(o, dict) for o in options):
+        return False
+    shown = [{"label": o.get("label"), "description": o.get("description")} for o in options]
+    return shown == CARD_OPTIONS
 
 
 def card_request(question: str, status: str) -> str:
@@ -346,7 +371,7 @@ def card_request(question: str, status: str) -> str:
 STATUS = {
     "": "No approval card for this payment was found.",
     DECLINE: "The owner declined it.",
-    "other card": "The latest approval card doesn't match this payment's amount, account or bill.",
+    "other card": "The latest approval card isn't exactly the card below for this payment.",
     "unanswered": "The approval card has no answer recorded.",
 }
 

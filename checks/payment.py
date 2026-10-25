@@ -47,18 +47,18 @@ def _money(cents: int) -> str:
 def items_add_up(r: dict) -> Result:
     order = r["order"]
     lines = [i["quantity"] * i["unit_price_cents"] for i in order["items"]]
+    # The schema makes subtotal and tax optional: no tax means 0, no subtotal means the items.
+    subtotal, tax = order.get("subtotal_cents", sum(lines)), order.get("tax_cents", 0)
     inputs = {
         "line_totals": [i["total_cents"] for i in order["items"]],
-        "subtotal_cents": order["subtotal_cents"],
-        "tax_cents": order["tax_cents"],
+        "subtotal_cents": subtotal,
+        "tax_cents": tax,
         "total_cents": order["total_cents"],
     }
     if lines != inputs["line_totals"]:
         title = f"An item's total isn't quantity times price on order {order['order_number']}"
         return Result("PAY-ITEMS-TOTAL", "fail", title, inputs)
-    if sum(lines) != order["subtotal_cents"] or (
-        order["subtotal_cents"] + order["tax_cents"] != order["total_cents"]
-    ):
+    if sum(lines) != subtotal or subtotal + tax != order["total_cents"]:
         title = f"Order {order['order_number']}'s items and tax don't add up to its total"
         return Result("PAY-ITEMS-TOTAL", "fail", title, inputs)
     title = f"Order {order['order_number']}'s items add up to {_money(order['total_cents'])}"
@@ -67,6 +67,11 @@ def items_add_up(r: dict) -> Result:
 
 def bill_matches_order(r: dict) -> Result:
     order, bill = r["order"], r["bill"]
+    if bill is None:
+        if r["payment"]["status"] == "sent":
+            title = f"A payment was sent, but order {order['order_number']} has no bill"
+            return Result("PAY-BILL-ORDER", "fail", title, {"bill": None})
+        return Result("PAY-BILL-ORDER", "skip", "No bill yet", {"bill": None})
     inputs = {
         "bill.references_order": bill["references_order"],
         "order.order_number": order["order_number"],
@@ -92,6 +97,8 @@ def bill_matches_order(r: dict) -> Result:
 
 def payment_matches_bill(r: dict) -> Result:
     bill, payment = r["bill"], r["payment"]
+    if bill is None:
+        return Result("PAY-AMOUNT", "skip", "No bill yet", {"bill": None})
     inputs = {
         "payment.amount_cents": payment["amount_cents"],
         "bill.amount_cents": bill["amount_cents"],
@@ -117,7 +124,8 @@ def payee_on_file(r: dict) -> Result:
     if not to or not on_file or to[-4:] != on_file[-4:]:
         title = f"Payment went to account {to}, not the account on file {on_file}"
         return Result("PAY-PAYEE", "fail", title, inputs)
-    return Result("PAY-PAYEE", "pass", f"Payment went to the account on file {on_file}", inputs)
+    title = f"Payment account {to} ends in the same 4 digits as the account on file {on_file}"
+    return Result("PAY-PAYEE", "pass", title, inputs)
 
 
 def stages_in_order(r: dict) -> Result:
@@ -153,11 +161,16 @@ def payment_matches_stage(r: dict) -> Result:
 
 
 def paid_on_time(r: dict) -> Result:
+    if r["bill"] is None:
+        return Result("PAY-ON-TIME", "skip", "No bill yet", {"bill": None})
     due = r["bill"]["due_date"]
     sent = next((s["at"] for s in r["events"] if s["stage"] == "payment_sent"), None)
     inputs = {"bill.due_date": due, "payment_sent.at": sent}
-    if r["payment"]["status"] != "sent" or not sent:
+    if r["payment"]["status"] != "sent":
         return Result("PAY-ON-TIME", "skip", "No payment was sent", inputs)
+    if not sent:
+        title = "Payment was sent, but the receipt doesn't record when"
+        return Result("PAY-ON-TIME", "skip", title, inputs)
     if datetime.fromisoformat(sent).date() > date.fromisoformat(due):
         return Result(
             "PAY-ON-TIME", "warn", f"Payment was sent after the bill was due ({due})", inputs
@@ -183,13 +196,15 @@ def run(receipt: dict) -> list[Result]:
     for check_id, check in CHECKS.items():
         try:
             results.append(check(receipt))
-        except (KeyError, TypeError, ValueError) as e:
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
             title = f"Receipt is missing what {check_id} needs: {type(e).__name__} {e}"
             results.append(Result(check_id, "fail", title))
     return results
 
 
 def main() -> None:
+    if len(sys.argv) != 2:
+        sys.exit("Usage: python -m checks.payment receipt.json")
     with open(sys.argv[1], encoding="utf-8") as f:
         results = run(json.load(f))
     for res in results:

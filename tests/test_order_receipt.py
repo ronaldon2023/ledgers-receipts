@@ -16,6 +16,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from bakery.seed import BILLS, INBOX, VENDORS
+from checks.payment import PAYMENT_STAGE_STATUS as STAGE_FOR_PAYMENT
 
 MOCK = Path(__file__).resolve().parent.parent / "docs" / "mock"
 SAMPLE = json.loads((MOCK / "order_receipt.json").read_text())
@@ -63,14 +64,6 @@ def xref_problems(receipt: dict) -> list[str]:
         elif not 1 <= index <= entries[session]:
             problems.append(f"ref {ref} is past {session}'s {entries[session]} entries")
     return problems
-
-
-STAGE_FOR_PAYMENT = {
-    "sent": "done",
-    "blocked": "blocked",
-    "failed": "failed",
-    "not_started": "not_reached",
-}
 
 
 def ledger_problems(receipt: dict) -> list[str]:
@@ -174,7 +167,8 @@ def test_timestamps_parse() -> None:
 
 def test_matches_seed() -> None:
     vendor_id, vendor_name, vendor_email, account = VENDORS[0]
-    bill_id, bill_vendor, bill_amount, bill_due, _ = BILLS[0]
+    bill_id, bill_vendor, bill_amount, bill_due, _, bill_order = BILLS[0]
+    assert SAMPLE["bill"]["references_order"] == bill_order
     assert SAMPLE["order"]["seller"] == {
         "id": vendor_id,
         "name": vendor_name,

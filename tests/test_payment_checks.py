@@ -7,7 +7,7 @@ import pytest
 
 from checks import payment
 
-FIXTURE = Path(__file__).parent.parent / "fixtures" / "order_receipt.json"
+FIXTURE = Path(__file__).parent.parent / "docs" / "mock" / "order_receipt.json"
 
 
 def blocked() -> dict:
@@ -23,6 +23,16 @@ def paid() -> dict:
     return r
 
 
+def unbilled() -> dict:
+    """The same order before the supplier has billed it."""
+    r = blocked()
+    r["bill"] = None
+    r["payment"]["status"] = "not_started"
+    for e in r["events"][-3:]:
+        e.update(status="not_reached", at=None)
+    return r
+
+
 def statuses(r: dict) -> dict[str, str]:
     return {res.id: res.status for res in payment.run(r)}
 
@@ -31,7 +41,7 @@ def event(r: dict, stage: str) -> dict:
     return next(e for e in r["events"] if e["stage"] == stage)
 
 
-@pytest.mark.parametrize("receipt", [blocked, paid])
+@pytest.mark.parametrize("receipt", [blocked, paid, unbilled])
 def test_clean_receipt_has_no_fails(receipt):
     assert "fail" not in statuses(receipt()).values()
     assert "warn" not in statuses(receipt()).values()
@@ -71,6 +81,7 @@ BREAKS = [
         "PAY-STATUS-STAGE",
     ),
     ("no_stage", lambda r: r["events"].pop(), "PAY-STATUS-STAGE"),
+    ("paid_without_bill", lambda r: r.update(bill=None), "PAY-BILL-ORDER"),
 ]
 
 
@@ -95,7 +106,40 @@ def test_missing_section_fails_closed():
     assert failed == {"PAY-BILL-ORDER", "PAY-AMOUNT", "PAY-ON-TIME"}  # every check that reads it
 
 
-@pytest.mark.parametrize("receipt", [blocked, paid])
+def test_wrong_typed_payment_fails_closed():
+    r = paid()
+    r["payment"] = "sent"
+    failed = {k for k, v in statuses(r).items() if v == "fail"}
+    assert failed == {"PAY-AMOUNT", "PAY-PAYEE", "PAY-STATUS-STAGE", "PAY-ON-TIME"}  # read it
+
+
+def test_unbilled_order_skips_bill_checks():
+    s = statuses(unbilled())
+    assert s["PAY-BILL-ORDER"] == s["PAY-AMOUNT"] == s["PAY-ON-TIME"] == "skip"
+
+
+def test_subtotal_and_tax_are_optional():
+    r = paid()
+    del r["order"]["subtotal_cents"], r["order"]["tax_cents"]
+    assert statuses(r)["PAY-ITEMS-TOTAL"] == "pass"
+
+
+def test_sent_payment_without_a_time_says_so():
+    r = paid()
+    event(r, "payment_sent")["at"] = None
+    res = next(x for x in payment.run(r) if x.id == "PAY-ON-TIME")
+    assert (res.status, res.title) == (
+        "skip",
+        "Payment was sent, but the receipt doesn't record when",
+    )
+
+
+def test_payee_match_claims_only_the_last_4_digits():
+    res = next(x for x in payment.run(paid()) if x.id == "PAY-PAYEE")
+    assert res.status == "pass" and "same 4 digits" in res.title
+
+
+@pytest.mark.parametrize("receipt", [blocked, paid, unbilled])
 def test_each_check_reports_its_registered_id(receipt):
     assert [check(receipt()).id for check in payment.CHECKS.values()] == list(payment.CHECKS)
 

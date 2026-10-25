@@ -381,11 +381,11 @@ Portal.onboarding = function (d, ui) {
       '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file</b></span></li></ul>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="rules">Save rules</button>' + back + '</div>';
   } else {
-    h += '<h2>You\'re set</h2><ul class="summary">' +
+    h += '<h2>You\'re set</h2><ol class="summary">' +
       '<li><b>Claude does the work</b><span>Orders supplies, pays bills and answers email, using the order and payment skills.</span></li>' +
       '<li><b>Code checks every step</b><span>Approved suppliers: ' + esc(r.suppliers || "none yet") + '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ' + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</span></li>' +
       '<li><b>You approve</b><span>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</span></li>' +
-      '<li><b>Alerts</b><span>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</span></li></ul>' +
+      '<li><b>Alerts</b><span>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</span></li></ol>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="finish">Go to dashboard</button>' + back + '</div>';
   }
   return h + '</section>';

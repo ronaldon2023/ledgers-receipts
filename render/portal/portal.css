@@ -225,9 +225,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .stepper li.on, .stepper li.done { color: var(--fg); }
 .stepper li.on .num, .stepper li.done .num { background: var(--brown); }
 .stepper li.on .lbl { font-weight: 600; }
-.summary { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.summary li { display: flex; flex-direction: column; gap: 2px; padding: 12px 0; border-top: 1px solid var(--line); }
+.summary { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; counter-reset: summary; }
+.summary li { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 12px 0 12px 30px; border-top: 1px solid var(--line); }
+.summary li::before { counter-increment: summary; content: counter(summary) "."; position: absolute; left: 0; top: 12px; font-weight: 600; color: var(--brown); }
 .summary li:first-child { border-top: 0; padding-top: 0; }
+.summary li:first-child::before { top: 0; }
 .summary span { color: var(--fg2); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .howto { margin: 0; padding-left: 22px; }

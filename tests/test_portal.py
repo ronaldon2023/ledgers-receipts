@@ -491,7 +491,7 @@ def test_onboarding_uses_a_stepper() -> None:
 @needs_node
 def test_youre_set_lists_items_vertically() -> None:
     html = onboarding(3)["main"]
-    assert html.count('<ul class="summary"><li><b>Claude does the work</b>') == 1
+    assert html.count('<ol class="summary"><li><b>Claude does the work</b>') == 1
     assert html.count("<li><b>") == 4
     assert 'class="quote"' not in html
 

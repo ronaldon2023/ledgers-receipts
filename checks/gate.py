@@ -60,8 +60,12 @@ def c4_account_on_file(p: Payment) -> CheckResult:
     inputs = {"to_account": _last4(to), "bill_asks": _last4(asked), "on_file": _last4(on_file)}
     ev = [f"bills:{p.bill['id']}", f"vendors:{p.vendor['id']}"]
     name = p.vendor["name"]
+    if not on_file:
+        return CheckResult("C4", "block", f"{name} has no account on file", ev, inputs)
     if to != on_file:
         title = f"Account {_last4(to)} differs from {name}'s on file {_last4(on_file)}"
+        if _last4(to) == _last4(on_file):
+            title = f"Account {_last4(to)} is not {name}'s on file; only the last 4 digits match"
         return CheckResult("C4", "block", title, ev, inputs)
     if asked != on_file:
         title = f"The bill asks to pay {_last4(asked)}, not {name}'s on file {_last4(on_file)}"

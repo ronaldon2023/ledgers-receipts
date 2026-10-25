@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 ONBOARDING_SKILL = "/ledgers-receipts:onboarding"
+PORTAL = "python -m render.portal"
 
 
 def onboarding_path() -> Path:
@@ -23,7 +24,9 @@ def message(path: Path) -> str:
     if not path.exists():
         return (
             f"Receipts: this business isn't set up yet ({path.name} is missing). "
-            f"Before doing any money work, run the {ONBOARDING_SKILL} skill with the owner."
+            "Before doing any money work, offer the owner two ways to set it up: answer a few "
+            f"questions here (run the {ONBOARDING_SKILL} skill), or open the owner portal "
+            f"(`{PORTAL}`) and finish its Your rules step. Both save {path.name}."
         )
     try:
         answers = json.loads(path.read_text(encoding="utf-8"))

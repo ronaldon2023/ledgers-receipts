@@ -10,6 +10,9 @@ folder. Before you start, tell the owner in one sentence why you're asking: toda
 approval amount is used, so bakery bill payments over it ask for their yes, and the rest is saved
 for later. Payments through PayPal, Square or Stripe aren't checked.
 
+The owner can also set this up in the owner portal (`python -m render.portal`, the Your rules
+step), which saves the same file. If they'd rather use the portal, point them there and stop.
+
 ## Before you ask
 
 - If the session already holds a `## Business context` block from the Small Business plugin's

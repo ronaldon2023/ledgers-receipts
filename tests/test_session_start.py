@@ -24,6 +24,7 @@ def run_hook(project: Path, **extra: str) -> str:
 def test_missing_answers_start_onboarding(tmp_path: Path) -> None:
     out = run_hook(tmp_path)
     assert "/ledgers-receipts:onboarding" in out
+    assert "python -m render.portal" in out
     assert f"{ANSWERS} is missing" in out
 
 

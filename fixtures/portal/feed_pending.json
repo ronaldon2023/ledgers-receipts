@@ -203,7 +203,6 @@
       "title": "Pay Flour Co $800.00 for bill BILL-07",
       "amount_cents": 80000,
       "short": "BILL-07, $800.00",
-      "subtitle": "For order PO-2041 · 16 bags of flour · due Tue 27 Oct · to account on file ********4471",
       "actions": [
         {
           "label": "Approve with passkey",

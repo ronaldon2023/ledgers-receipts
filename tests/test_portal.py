@@ -494,3 +494,12 @@ def test_youre_set_lists_items_vertically() -> None:
     assert html.count('<ul class="summary"><li><b>Claude does the work</b>') == 1
     assert html.count("<li><b>") == 4
     assert 'class="quote"' not in html
+
+
+@needs_node
+def test_bill_card_has_no_subtitle() -> None:
+    html = page(data("pending"))
+    card = html[html.index("Pay Flour Co $800.00 for bill BILL-07") :]
+    card = card[: card.index("</article>")]
+    assert 'class="muted"' not in card
+    assert "16 bags of flour · due" not in card

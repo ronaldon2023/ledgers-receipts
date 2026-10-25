@@ -31,8 +31,10 @@ def run_hook(db: Path, tool_input: object, **extra: str) -> str:
 
 
 def run_raw(db: Path, stdin: str, **extra: str) -> str:
+    # CLAUDE_PROJECT_DIR is always tmp_path, so no test reads the repo's own onboarding file.
     env = {**os.environ, "BAKERY_DB": str(db), "CLAUDE_PROJECT_DIR": str(db.parent)}
     env.pop("RECEIPTS_APPROVAL_CENTS", None)
+    env.pop("RECEIPTS_ONBOARDING", None)
     env.update(extra)
     done = subprocess.run(
         [sys.executable, str(HOOK)],
@@ -182,3 +184,67 @@ def test_hooks_json_registers_approval() -> None:
     assert matcher.search("mcp__plugin_ledgers-receipts_bakery-local__pay_bill")
     assert not matcher.search("mcp__bakery-local__save_draft")
     assert not matcher.search("mcp__bakery-local__pay_bill_later")
+
+
+def onboard(folder: Path, rules: object, name: str = "receipts-onboarding.json") -> Path:
+    """Write onboarding answers; a str is written as-is, anything else as payment_rules."""
+    path = folder / name
+    if isinstance(rules, str):
+        path.write_text(rules)
+    else:
+        path.write_text(json.dumps({"schema": "receipts-onboarding/0", "payment_rules": rules}))
+    return path
+
+
+def test_onboarding_threshold_is_used(db: Path) -> None:
+    onboard(db.parent, {"approval_threshold_cents": 50000})
+    text = asked(run_hook(db, pay(80000)))
+    assert "Payments over $500.00 need the owner's approval (set in onboarding)." in text
+    assert run_hook(db, pay(40000)) == ""
+
+
+def test_no_onboarding_file_uses_default(db: Path) -> None:
+    assert run_hook(db, pay(80000)) == ""
+    text = asked(run_hook(db, pay(150000)))
+    assert "Payments over $1,000.00 need the owner's approval (default)." in text
+
+
+@pytest.mark.parametrize("rules", [{}, {"approval_threshold_cents": None}])
+def test_onboarding_without_threshold_uses_default(db: Path, rules: dict) -> None:
+    onboard(db.parent, rules)
+    assert run_hook(db, pay(100000)) == ""
+    assert "(default)" in asked(run_hook(db, pay(100001)))
+
+
+@pytest.mark.parametrize("body", ["{not json", "[1, 2]", json.dumps({"payment_rules": [50000]})])
+def test_unreadable_onboarding_asks_for_every_payment(db: Path, body: str) -> None:
+    onboard(db.parent, body)
+    text = asked(run_hook(db, pay(80000)))
+    assert "The onboarding answers couldn't be read" in text
+    assert "every payment needs approval" in text
+
+
+def test_onboarding_that_cannot_be_opened_asks(db: Path) -> None:
+    (db.parent / "receipts-onboarding.json").mkdir()
+    assert "couldn't be read (the file can't be opened)" in asked(run_hook(db, pay(100)))
+
+
+@pytest.mark.parametrize("value", ["500", True, -1, 500.0])
+def test_bad_onboarding_threshold_asks(db: Path, value: object) -> None:
+    onboard(db.parent, {"approval_threshold_cents": value})
+    text = asked(run_hook(db, pay(100)))
+    assert "approval_threshold_cents isn't a whole number of cents" in text
+
+
+def test_env_threshold_beats_onboarding(db: Path) -> None:
+    onboard(db.parent, {"approval_threshold_cents": 50000})
+    assert run_hook(db, pay(80000), RECEIPTS_APPROVAL_CENTS="200000") == ""
+
+
+def test_receipts_onboarding_env_picks_the_file(db: Path, tmp_path: Path) -> None:
+    onboard(db.parent, {"approval_threshold_cents": 500000})
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    other = onboard(elsewhere, {"approval_threshold_cents": 50000}, "answers.json")
+    text = asked(run_hook(db, pay(80000), RECEIPTS_ONBOARDING=str(other)))
+    assert "Payments over $500.00 need the owner's approval (set in onboarding)." in text

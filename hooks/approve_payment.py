@@ -1,10 +1,15 @@
 """PreToolUse hook: make the owner approve any bakery payment over the approval threshold.
 
 Claude Code runs this before the bakery MCP tool pay_bill. When this payment plus
-what's already paid on the bill is over the threshold (default $1,000, env
-RECEIPTS_APPROVAL_CENTS overrides it, in cents), it prints an "ask" decision, so
+what's already paid on the bill is over the threshold, it prints an "ask" decision, so
 Claude Code shows the owner its permission prompt with the payment details as the reason.
 At or under the threshold it prints nothing, which leaves the decision to the normal rules.
+
+The threshold, in cents: env RECEIPTS_APPROVAL_CENTS when set (a non-number makes every payment
+ask); else payment_rules.approval_threshold_cents in the onboarding answers (env
+RECEIPTS_ONBOARDING, else $CLAUDE_PROJECT_DIR/receipts-onboarding.json); $1,000 when that file
+or key is missing. An onboarding file that can't be read or holds a bad value makes every
+payment ask. The reason says where the threshold came from.
 
 The details come from bakery.db, opened read-only: env BAKERY_DB, else
 $CLAUDE_PROJECT_DIR/bakery.db. If the bill can't be read, it still asks and says so; if earlier
@@ -58,15 +63,48 @@ def _show_bill_id(tool_input: dict[str, Any]) -> str:
     return _clip(safe) + ("" if safe == raw and raw else " (malformed bill id)")
 
 
-def threshold_cents() -> int | None:
-    """The threshold in cents, or None when RECEIPTS_APPROVAL_CENTS is set but not a number."""
+def onboarding_path() -> Path:
+    """Where the onboarding answers live; the same lookup as hooks/session_start.py."""
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or "."
+    return Path(os.environ.get("RECEIPTS_ONBOARDING") or Path(root) / "receipts-onboarding.json")
+
+
+def _from_onboarding() -> tuple[int | None, str]:
+    """The onboarding threshold and its source label; None plus why when it can't be trusted."""
+    unreadable = "the onboarding answers couldn't be read ({}), so every payment needs approval."
+    try:
+        text = onboarding_path().read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return DEFAULT_THRESHOLD_CENTS, "default"
+    except (OSError, ValueError):
+        return None, unreadable.format("the file can't be opened")
+    try:
+        answers = json.loads(text)
+    except (ValueError, RecursionError):
+        return None, unreadable.format("not valid JSON")
+    rules = answers.get("payment_rules") if isinstance(answers, dict) else None
+    if not isinstance(answers, dict) or not isinstance(rules, dict):
+        return None, unreadable.format("no payment_rules object")
+    value = rules.get("approval_threshold_cents")
+    if value is None:
+        return DEFAULT_THRESHOLD_CENTS, "default"
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None, unreadable.format("approval_threshold_cents isn't a whole number of cents")
+    return value, "set in onboarding"
+
+
+def threshold_cents() -> tuple[int | None, str]:
+    """The threshold in cents and where it came from, or None and why every payment must ask.
+
+    RECEIPTS_APPROVAL_CENTS wins when set (a test override); else the onboarding answers.
+    """
     raw = os.environ.get("RECEIPTS_APPROVAL_CENTS", "").strip()
     if not raw:
-        return DEFAULT_THRESHOLD_CENTS
+        return _from_onboarding()
     try:
-        return int(raw)
+        return int(raw), "set by RECEIPTS_APPROVAL_CENTS"
     except ValueError:
-        return None
+        return None, "RECEIPTS_APPROVAL_CENTS isn't a number, so every payment needs approval."
 
 
 def db_path() -> Path:
@@ -112,8 +150,11 @@ def paid_on_bill(bill_id: str) -> int:
     return row[0] if row and isinstance(row[0], int) else 0
 
 
-def reason(tool_input: dict[str, Any], threshold: int | None, paid: int = 0) -> str:
-    """The plain-text reason the owner sees in the permission prompt."""
+def reason(tool_input: dict[str, Any], threshold: int | None, source: str, paid: int = 0) -> str:
+    """The plain-text reason the owner sees in the permission prompt.
+
+    `source` is where the threshold came from, or, when threshold is None, why there is none.
+    """
     amount = tool_input.get("amount_cents")
     bill_id = _show_bill_id(tool_input)
     account = str(tool_input.get("to_account") or "")
@@ -121,9 +162,11 @@ def reason(tool_input: dict[str, Any], threshold: int | None, paid: int = 0) -> 
     if isinstance(amount, int) and not isinstance(amount, bool):
         lines.append(f"Receipts: approve paying {dollars(amount)} on bill {bill_id}?")
         if threshold is None:
-            lines.append("RECEIPTS_APPROVAL_CENTS isn't a number, so every payment needs approval.")
+            lines.append(source[0].upper() + source[1:])
         else:
-            lines.append(f"Payments over {dollars(threshold)} need the owner's approval.")
+            lines.append(
+                f"Payments over {dollars(threshold)} need the owner's approval ({source})."
+            )
         if paid:
             total = dollars(paid + amount)
             lines.append(f"Already paid on this bill: {dollars(paid)}. With this one: {total}.")
@@ -166,12 +209,12 @@ def decide(event: Any) -> str | None:
         return "Receipts: malformed payment call (no tool input); couldn't check it."
     tool_input = event["tool_input"]
     amount = tool_input.get("amount_cents")
-    threshold = threshold_cents()
+    threshold, source = threshold_cents()
     is_int = isinstance(amount, int) and not isinstance(amount, bool)
     paid = paid_on_bill(str(tool_input["bill_id"])) if "bill_id" in tool_input else 0
     if is_int and amount > 0 and threshold is not None and amount + max(paid, 0) <= threshold:
         return None
-    return reason(tool_input, threshold, paid)
+    return reason(tool_input, threshold, source, paid)
 
 
 def ask(text: str) -> str:

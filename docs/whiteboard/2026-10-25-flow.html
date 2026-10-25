@@ -141,7 +141,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
           <span class="scribble">Who authorized it? What permissions?</span><br>
           Was it the <b>agent</b> or a <b>human</b>?
         </div>
-        <div class="step"><span class="dot">✋</span><p><b>Owner approves.</b> Claude Code asks the owner, in a permission prompt the agent can't answer itself. Don't run in bypass-permissions mode.</p></div>
+        <div class="step"><span class="dot">✋</span><p><b>Owner approves</b> any payment over the policy threshold. Claude Code asks the owner, in a permission prompt the agent can't answer itself. Don't run in bypass-permissions mode.</p></div>
         <div class="step"><span class="dot">🔑</span><p><b>Passkey / hash</b> to prove who authorized it. <span class="later">later idea</span></p></div>
       </div>
 
@@ -166,7 +166,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
           <div class="down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v15M6 13l6 6 6-6"/></svg></div>
           <div class="chip"><b>Validate</b><small>does the payment match the order and invoice?</small></div>
           <div class="down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v15M6 13l6 6 6-6"/></svg></div>
-          <div class="chip"><b>Owner approves, then pay</b><small><code>pay_bill(bill_id, amount_cents, to_account)</code></small></div>
+          <div class="chip"><b>Over the threshold? Owner approves, then pay</b><small><code>pay_bill(bill_id, amount_cents, to_account)</code></small></div>
           <div class="down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v15M6 13l6 6 6-6"/></svg></div>
           <div class="chip receipt"><b>Final order receipt</b><small>the page the owner reads</small></div>
           <div class="hookline">⤷ made by a hook, not by the AI</div>
@@ -188,7 +188,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
     <div>
       <h3>Checks and guards</h3>
       <p>Come <b>from policy</b>. The rules are written down, not decided by the AI.</p>
-      <p class="note">Now: one deterministic checks library <span class="ai">no AI</span>. Where it is called, inside the MCP write tools or in Ronaldo's guard hook, is still being settled in PR #8.</p>
+      <p class="note">Decided: one deterministic checks library <span class="ai">no AI</span>, run inside the MCP server's write tools. A failed check means the tool refuses and nothing is saved.</p>
     </div>
   </section>
 
@@ -200,7 +200,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
       <li>No double payment</li>
       <li>Sender domain matches the vendor's</li>
       <li>Payment row exists afterwards</li>
-      <li>Plus the owner's approval prompt</li>
+      <li>Plus the owner's approval prompt over the threshold</li>
     </ul>
   </section>
 
@@ -220,8 +220,9 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
       <div class="col">
         <h3>Governing policies</h3>
         <p class="kicker">The rules of the business</p>
-        <ul><li>Payment</li><li>Order</li><li>Budget</li></ul>
-        <p class="note">Deferred to issue #9. For demo stage 1, the owner approves every payment, the same rule the Small Business plugin follows: "Do not auto-pay anything, ever." Thresholds and budgets come with the policy later.</p>
+        <ul><li>Payment threshold</li><li>Approved suppliers</li><li class="nest">Budget
+            <ul><li>Monthly budget</li><li>Bank account floor (total)</li></ul></li></ul>
+        <p class="note">A JSON policy file that onboarding writes from the owner's answers. Checks and guards read it; the AI never edits it.</p>
       </div>
       <div class="col">
         <h3>Skills</h3>
@@ -246,7 +247,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
       <h2>Assumptions</h2>
       <dl>
         <div class="row"><dt>Business owner</dt><dd>uses Claude Code</dd></div>
-        <div class="row"><dt>Guardline</dt><dd>a payment threshold<small>Now: deferred to issue #9. Stage 1: the owner approves every payment.</small></dd></div>
+        <div class="row"><dt>Guardline</dt><dd>a payment threshold<small>Now: set in the policy file at onboarding. Over it, the owner must approve.</small></dd></div>
         <div class="row"><dt>Checks / validation</dt><dd>order sent<br>payment sent</dd></div>
         <div class="row"><dt>Order receipt</dt><dd>generated when the order starts<small>Now: when the order is submitted, then updated at each step</small></dd></div>
         <div class="row"><dt>MCP proxy / Claude SMB plugin</dt><dd>build around these<small>SMB = small and medium business</small></dd></div>
@@ -258,7 +259,7 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
         <div class="row"><dt>Website</dt><dd>Dashboard<br>Policies<br>Order receipt<small>Lana</small></dd></div>
         <div class="row"><dt>MCP</dt><dd>Bank<br>Inventory<small>simulate the outside world</small><small>Luke + Owen: MCP server + proxy, including the supplier simulation</small></dd></div>
         <div class="row"><dt>DB</dt><dd>MCP retrieves data from it<small>Ronaldo</small></dd></div>
-        <div class="row"><dt>Checks</dt><dd>Deterministic <span class="ai">no AI</span><small>possibly behind the MCP</small><small>Anthony: checks, guards, verify, skills, hooks</small></dd></div>
+        <div class="row"><dt>Checks</dt><dd>Deterministic <span class="ai">no AI</span><small>behind the MCP: a failed check refuses the write</small><small>Anthony: checks, guards, verify, skills, hooks</small></dd></div>
       </dl>
     </div>
   </section>
@@ -273,7 +274,8 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
     </ol>
     <div class="rulesmall">
       <p><b>Comes with Small Business.</b> Installing ours also installs the Claude for Small Business plugin as a dependency.</p>
-      <p><b>Two onboardings, in order.</b> The Small Business plugin's onboarding (<code>smb-onboard</code>) runs, then ours. A session-start hook starts ours when the business isn't set up yet.</p>
+      <p><b>Two onboardings, in order.</b> The Small Business plugin's onboarding (<code>smb-onboard</code>) runs, then ours, which skips anything theirs already asked. A session-start hook starts ours when no policy exists yet.</p>
+      <p><b>Answers become the policy.</b> The owner answers a few questions: payment threshold, monthly budget, bank account floor, approved suppliers, and which tools and outside systems they use. Onboarding writes the answers to the policy JSON file.</p>
     </div>
       <div class="col" style="margin-top:16px;max-width:520px">
         <h3>Developer onboarding</h3>
@@ -310,13 +312,13 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
       <li class="final">Receipt ready<code>receipt.json</code></li>
     </ol>
     <div class="rulesmall">
-      <p><b>One writer.</b> Only one backend part writes the file, so updates never overwrite each other.</p>
+      <p><b>One writer.</b> Only the receipt hook (Anthony) writes the file, so updates never overwrite each other.</p>
       <p><b>No half-written reads.</b> The backend writes a temp file and swaps it in. The website checks every second or so.</p>
       <p><b>Display only.</b> The step file shows progress. The final verdict comes from the verifier's <code>receipt.json</code>.</p>
       <p><b>Built from the log.</b> The hash-chain log already records every step, so the file can be made from it.</p>
     </div>
-    <h3 style="margin-top:28px">Where the website runs: both ways</h3>
-    <p class="lede" style="margin-top:6px">The same website runs locally for an offline-safe demo, and hosted for a shareable link.</p>
+    <h3 style="margin-top:28px">Where the website runs: locally</h3>
+    <p class="lede" style="margin-top:6px">Everything runs on the demo laptop against local SQLite (<code>bakery.db</code>, built by <code>make reset</code>), including the demo.</p>
     <div class="options">
       <div class="opt">
         <span class="optlabel">Local mode</span>
@@ -330,26 +332,19 @@ footer{font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);paddi
         </dl>
       </div>
       <div class="opt">
-        <span class="optlabel">Hosted mode</span>
-        <h3>GitHub Pages + Supabase</h3>
-        <p class="path">Backend → Supabase → Website on GitHub Pages</p>
-        <dl>
-          <div class="row"><dt>Live updates</dt><dd>Supabase pushes each step to the page instantly</dd></div>
-          <div class="row"><dt>Setup</dt><dd>Adds Supabase and its library</dd></div>
-          <div class="row"><dt>Offline</dt><dd>Needs Wi-Fi; local mode is the fallback</dd></div>
-          <div class="row"><dt>Sharing</dt><dd>Public link anyone can open; fake data only</dd></div>
-          <div class="row"><dt>Keys</dt><dd>Public key in website with read-only access<small>Service key stays on the backend, never in the repo</small></dd></div>
-        </dl>
+        <span class="optlabel">Not planned</span>
+        <h3>Hosted: GitHub Pages + Supabase</h3>
+        <p>Dropped. It would make the demo depend on venue Wi-Fi, need keys handled carefully in a public repo, and add setup for everyone.</p>
       </div>
     </div>
-    <p class="note" style="margin-top:12px">In both modes, the JSON file and Supabase are display copies. The verifier still checks the local database and log.</p>
+    <p class="note" style="margin-top:12px">The JSON file is a display copy. The verifier still checks the local database and log.</p>
   </section>
 
   <footer>
     <span>Source: whiteboard photo, <code>docs/whiteboard/2026-10-25-whiteboard.jpg</code> on branch <code>docs/whiteboard</code>.</span>
     <span>Change from the board: demo stage 1 now also covers the order lifecycle.</span>
-    <span>Added after the session: the JSON handoff between website and backend, running both locally and hosted on GitHub Pages + Supabase.</span>
-    <span>Added after the session (decided by Anthony): onboarding, roles, the simulated black box, owner approval on payment, where checks run (PR #8), policies deferred (issue #9), the security guard, the receipt rules, the one AI step, and the demo stage 1 checks.</span>
+    <span>Added after the session: the JSON handoff between website and backend, running locally on SQLite. Hosted mode (GitHub Pages + Supabase) was considered and dropped.</span>
+    <span>Added after the session (decided by Anthony): onboarding, roles, the simulated black box, owner approval on payment, checks run inside the MCP write tools, the policy file written by onboarding, the security guard, the receipt rules, the one AI step, and the demo stage 1 checks.</span>
     <span>Parts of the photo were blacked out before it was shared.</span>
     <span>Interpretations added in redraw: "outside our system" for the black box, "made by a hook" for the receipt, and the one-line descriptions under each heading.</span>
   </footer>

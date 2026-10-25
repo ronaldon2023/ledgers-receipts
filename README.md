@@ -7,6 +7,12 @@ checks the work, and the AI never grades itself.
 
 Built by The Ledgers at the Claude Impact Lab Hackathon, Seattle, October 2026.
 
+## What the owner sees
+
+Design mock with sample data (see `docs/mock/`). Feedback welcome.
+
+![Receipt mock for Sweet Rose Bakery: an ISSUES FOUND verdict, a grid showing where each problem was caught, and the list of checks](docs/mock/receipt.png)
+
 ## Quick start
 
 ```sh

@@ -186,7 +186,7 @@ Portal.feedHtml = function (feed, ui) {
   h += '</div></div><div class="feedbar"><div class="viewtoggle" role="group" aria-label="Group activities">' +
     '<button type="button" class="seg" data-feedview="time" aria-pressed="' + !byOrd + '">By time</button>' +
     '<button type="button" class="seg" data-feedview="order" aria-pressed="' + byOrd + '">By order</button></div>' +
-    '<span class="muted small">' + (byOrd ? 'Each order with its bill and payment, newest first' : 'Everything, newest first') + '</span></div><div class="feed">';
+    (byOrd ? '' : '<span class="muted small">Everything, newest first</span>') + '</div><div class="feed">';
   var any = false;
   Portal.groups(feed, byOrd).forEach(function (g) {
     var items = g.items.filter(function (it) { return Portal.keep(ui.filter, it); });

@@ -67,3 +67,28 @@ def test_outbox_and_payments_start_empty(tmp_path: Path) -> None:
     seed(db)
     assert query(db, "SELECT COUNT(*) FROM outbox") == [(0,)]
     assert query(db, "SELECT COUNT(*) FROM payments") == [(0,)]
+
+
+def test_order_items_add_up_and_bill_matches_order(tmp_path: Path) -> None:
+    db = tmp_path / "bakery.db"
+    seed(db)
+    totals = query(
+        db,
+        "SELECT o.id, o.total_cents, SUM(i.quantity * i.unit_price_cents) FROM orders o "
+        "JOIN order_items i ON i.order_id = o.id GROUP BY o.id ORDER BY o.id",
+    )
+    assert all(total == items for _, total, items in totals)
+    assert query(db, "SELECT order_id, amount_cents FROM bills WHERE id = 'BILL-07'") == [
+        ("PO-2041", 80000)
+    ]
+
+
+def test_policies_and_budget_numbers(tmp_path: Path) -> None:
+    db = tmp_path / "bakery.db"
+    seed(db)
+    limits = dict(query(db, "SELECT id, limit_cents FROM policies"))
+    assert limits["POL-PAY-THRESHOLD"] == 50000
+    spent = query(db, "SELECT SUM(total_cents) FROM orders WHERE order_date LIKE '2026-10-%'")
+    assert spent == [(294000,)]  # $2,940 of the $3,000 budget
+    (balance,) = query(db, "SELECT balance_cents FROM accounts WHERE id = 'ACC-OPS'")[0]
+    assert balance - 80000 >= limits["POL-BANK-FLOOR"]

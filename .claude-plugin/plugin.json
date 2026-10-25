@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "ledgers-receipts",
+  "displayName": "Receipts",
+  "description": "Guards, a hash-chain log and an order receipt around the Small Business plugin. Code checks the agent's work; the AI never grades itself.",
+  "author": {
+    "name": "The Ledgers",
+    "url": "https://github.com/ronaldon2023/ledgers-receipts"
+  },
+  "homepage": "https://github.com/ronaldon2023/ledgers-receipts",
+  "repository": "https://github.com/ronaldon2023/ledgers-receipts",
+  "license": "MIT",
+  "keywords": ["small-business", "audit", "receipts", "guardrails"],
+  "dependencies": [{ "name": "small-business", "marketplace": "knowledge-work-plugins" }]
+}

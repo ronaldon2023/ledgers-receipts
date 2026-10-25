@@ -29,6 +29,14 @@ reveals `list_products` and `get_price` steps and a restock proposal (`PO-2042`,
 approving it adds `place_order` and `list_orders`. The run is simulated from fixture data:
 items tagged `requires` stay hidden until the owner clicks the card that produces them.
 
+## Saving the owner's rules
+
+The onboarding "Your rules" step saves through `POST /api/onboarding` into
+`receipts-onboarding.json` in the business folder (`--business-dir`, or the folder you start the
+portal from): the same file Claude Code's onboarding skill writes and the approval hook reads.
+Only `payment_rules` is replaced; the rest of an existing file is kept. Only the portal page's
+own origin may save, and every value is checked (`render/portal/rules.py`).
+
 ## Rules this code keeps
 
 - Every value from data goes through `Portal.esc()`; links from data must start with `#`.

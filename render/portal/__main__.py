@@ -3,25 +3,39 @@
 Serves only the portal files and, under /data/, the JSON in fixtures/portal/, plus
 /data/onboarding.json: the business folder's receipts-onboarding.json, which the Claude Code
 onboarding skill writes. Nothing else in the repo or the business folder is reachable.
+
+POST /api/onboarding saves the owner's payment rules from the portal's "Your rules" step into
+that same file (see rules.py). It accepts only JSON sent by the portal page itself.
 """
 
 import argparse
 import http.server
+import json
 import webbrowser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+
+from render.portal.rules import parse_rules, save
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE.parent.parent / "fixtures" / "portal"
 SERVED = {".html", ".css", ".js", ".json"}
 ONBOARDING = "receipts-onboarding.json"
 ONBOARDING_URL = "/data/onboarding.json"
+SAVE_URL = "/api/onboarding"
+MAX_BODY = 16 * 1024
 
 
 def host_allowed(host: str | None, port: int) -> bool:
     """Only this machine's own names: a page on another site that points its domain at
     127.0.0.1 (DNS rebinding) sends its own Host, so it can't read the owner's rules."""
     return host in (f"127.0.0.1:{port}", f"localhost:{port}")
+
+
+def origin_allowed(origin: str | None, port: int) -> bool:
+    """Only the portal page itself may save: a form or script on any other site sends its own
+    Origin (or none), so it can't change the owner's approval amount."""
+    return origin in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
 
 
 def resolve(
@@ -76,6 +90,42 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_HEAD(self) -> None:
         if not self.answered():
             super().do_HEAD()
+
+    def reply(self, status: int, body: dict) -> None:
+        data = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self) -> None:
+        """Save the owner's payment rules. Every refusal says why, and writes nothing."""
+        port = self.server.server_address[1]
+        if not host_allowed(self.headers.get("Host"), port):
+            return self.reply(
+                403, {"ok": False, "error": "Open the portal at 127.0.0.1 or localhost"}
+            )
+        if urlsplit(self.path).path != SAVE_URL:
+            return self.reply(404, {"ok": False, "error": "Not found"})
+        if not origin_allowed(self.headers.get("Origin"), port):
+            return self.reply(403, {"ok": False, "error": "Only the portal page can save rules"})
+        if self.headers.get_content_type() != "application/json":
+            return self.reply(415, {"ok": False, "error": "Send the rules as JSON"})
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return self.reply(411, {"ok": False, "error": "Content-Length is required"})
+        if not 0 < length <= MAX_BODY:
+            return self.reply(413, {"ok": False, "error": "The request is too large"})
+        try:
+            rules = parse_rules(self.rfile.read(length))
+            target = save(self.business or Path.cwd(), rules)
+        except ValueError as e:
+            return self.reply(400, {"ok": False, "error": str(e)})
+        except OSError:
+            return self.reply(500, {"ok": False, "error": "The rules couldn't be saved"})
+        self.reply(200, {"ok": True, "saved": target.name})
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")

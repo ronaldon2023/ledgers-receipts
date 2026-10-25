@@ -1,6 +1,6 @@
 """Checks on the draft order receipt sample in docs/mock.
 
-The schema catches shape, contradictions and unmasked account numbers; the tests here also
+The schema catches shape and unmasked account numbers; ledger_problems holds the verdict rules; the tests here also
 catch what JSON Schema cannot express: dangling or duplicate references, wrong sums and drift
 from the seed.
 """
@@ -34,7 +34,7 @@ def xref_problems(receipt: dict) -> list[str]:
     problems += [f"duplicate check {i}" for i in sorted(set(ids)) if ids.count(i) > 1]
     checks = {c["id"]: c for c in receipt["checks"]}
     on_stage = {}
-    for row in receipt["lifecycle"]:
+    for row in receipt["events"]:
         for check_id in row["checks"]:
             if check_id not in checks:
                 problems.append(f"{row['stage']} lists unknown check {check_id}")
@@ -50,7 +50,7 @@ def xref_problems(receipt: dict) -> list[str]:
     problems += [f"ref {r} has no evidence entry" for r in refs if r not in receipt["evidence"]]
     sessions = [s["session"] for s in receipt["sessions"]]
     problems += [f"duplicate session {s}" for s in sorted(set(sessions)) if sessions.count(s) > 1]
-    stages = [row["stage"] for row in receipt["lifecycle"]]
+    stages = [row["stage"] for row in receipt["events"]]
     problems += [f"duplicate stage {s}" for s in sorted(set(stages)) if stages.count(s) > 1]
     entries = {s["session"]: s["entries"] for s in receipt["sessions"]}
     for ref in receipt["evidence"]:
@@ -65,9 +65,52 @@ def xref_problems(receipt: dict) -> list[str]:
     return problems
 
 
+STAGE_FOR_PAYMENT = {
+    "sent": "done",
+    "blocked": "blocked",
+    "failed": "failed",
+    "not_started": "not_reached",
+}
+
+
+def ledger_problems(receipt: dict) -> list[str]:
+    """Verdict and consistency rules the schema no longer holds.
+
+    Check logic belongs in the checks library; these move there once it exists.
+    """
+    problems = []
+    verdict, summary = receipt["verdict"], receipt["summary_check"]
+    statuses = [c["status"] for c in receipt["checks"]]
+    stages = {e["stage"]: e["status"] for e in receipt["events"]}
+    payment = receipt["payment"]["status"]
+    broken = any(not s["ok"] for s in receipt["sessions"])
+    if broken != (verdict == "UNTRUSTED"):
+        problems.append(f"verdict {verdict} with a broken chain: {broken}")
+    all_green = all(s == "verified" for s in statuses) and summary["status"] == "checked"
+    if verdict == "VERIFIED":
+        if not all_green:
+            problems.append("VERIFIED with a check or the summary not verified")
+        if payment not in ("not_started", "sent"):
+            problems.append(f"VERIFIED with payment {payment}")
+        if any(s not in ("done", "not_reached") for s in stages.values()):
+            problems.append("VERIFIED with a stage blocked or failed")
+        if receipt.get("owner_action", {}).get("needed"):
+            problems.append("VERIFIED with an owner action pending")
+    if verdict == "ISSUES_FOUND" and all_green:
+        problems.append("ISSUES_FOUND with nothing found")
+    if summary["status"] != "checked" and any(c["kind"] == "summary" for c in receipt["checks"]):
+        problems.append("summary checks on an unchecked summary")
+    if ("error" in summary) != (summary["status"] == "error"):
+        problems.append("summary error message does not match its status")
+    if stages.get("payment_sent", "not_reached") != STAGE_FOR_PAYMENT[payment]:
+        problems.append(f"payment {payment} but payment_sent is {stages.get('payment_sent')}")
+    return problems
+
+
 def test_schema_is_valid_and_sample_passes() -> None:
     Draft202012Validator.check_schema(SCHEMA)
     assert schema_errors(SAMPLE) == []
+    assert ledger_problems(SAMPLE) == []
 
 
 def test_references_resolve() -> None:
@@ -92,9 +135,7 @@ XREF_BREAKS = {
     "duplicate check chk_1": _duplicate_check,
     "ref s2:log:9 is past s2's 6 entries": _ref_past_entries,
     "duplicate session s1": lambda r: r["sessions"].append(copy.deepcopy(r["sessions"][0])),
-    "duplicate stage payment_sent": lambda r: r["lifecycle"].append(
-        copy.deepcopy(r["lifecycle"][-1])
-    ),
+    "duplicate stage payment_sent": lambda r: r["events"].append(copy.deepcopy(r["events"][-1])),
 }
 
 
@@ -119,7 +160,7 @@ def test_money_adds_up() -> None:
 def test_timestamps_parse() -> None:
     # The schema's date-time format is only enforced when a format checker is installed.
     stamps = [SAMPLE["generated_at"], SAMPLE["order"]["order_date"], SAMPLE["bill"]["received_at"]]
-    stamps += [row["at"] for row in SAMPLE["lifecycle"] if row["at"]]
+    stamps += [row["at"] for row in SAMPLE["events"] if row["at"]]
     for stamp in stamps:
         assert datetime.fromisoformat(stamp).tzinfo is not None, stamp
     date.fromisoformat(SAMPLE["bill"]["due_date"])
@@ -212,14 +253,14 @@ def clean_receipt() -> dict:
     payment.update(
         status="sent", payment_id="pay_1", requested_to_account=payment["account_on_file"]
     )
-    receipt["lifecycle"][-1]["status"] = "done"
+    receipt["events"][-1]["status"] = "done"
     return receipt
 
 
 def _drop_summary_checks(receipt: dict) -> None:
     summary = {c["id"] for c in receipt["checks"] if c["kind"] == "summary"}
     receipt["checks"] = [c for c in receipt["checks"] if c["id"] not in summary]
-    for row in receipt["lifecycle"]:
+    for row in receipt["events"]:
         row["checks"] = [i for i in row["checks"] if i not in summary]
 
 
@@ -230,9 +271,9 @@ CONTRADICTIONS = {
     "payment_sent_but_stage_blocked": _steps(
         _set("payment.status", "sent"), _set("payment.payment_id", "pay_1")
     ),
-    "payment_blocked_but_stage_done": _set("lifecycle.5.status", "done"),
+    "payment_blocked_but_stage_done": _set("events.5.status", "done"),
     "summary_unchecked_but_summary_check": _set("summary_check", {"status": "not_checked"}),
-    "blocked_stage_unverified": _set("lifecycle.5.source", "unverified"),
+    "blocked_stage_unverified": _set("events.5.source", "unverified"),
     "account_in_evidence": _set("evidence.inbox:5", "pay to account 9876543210"),
     "account_in_quote": _set("checks.4.caused_by.quote", "pay to account 9876543210"),
     "no_checks": _set("checks", []),
@@ -242,8 +283,8 @@ CONTRADICTIONS = {
     "sent_without_payment_id": _set("payment.status", "sent"),
     "payment_id_while_blocked": _set("payment.payment_id", "pay_1"),
     "check_without_evidence": _set("checks.0.evidence", []),
-    "logged_stage_without_checks": _set("lifecycle.0.checks", []),
-    "logged_stage_without_time": _set("lifecycle.0.at", None),
+    "logged_stage_without_checks": _set("events.0.checks", []),
+    "logged_stage_without_time": _set("events.0.at", None),
     "account_in_pii_entity": _set("pii.0.entity", "9876543210"),
     "short_chain_head": _set("sessions.0.head", "f1204705a75493c8"),
     "unmasked_account": _set("payment.account_on_file", "000123454471"),
@@ -257,7 +298,7 @@ CONTRADICTIONS = {
 # Each case breaks one VERIFIED condition on an otherwise clean order, so every clause is pinned.
 VERIFIED_BREAKS = {
     "owner_action_needed": _set("owner_action", {"needed": True}),
-    "stage_failed": _set("lifecycle.0.status", "failed"),
+    "stage_failed": _set("events.0.status", "failed"),
     "check_flagged": _set("checks.0.status", "flagged"),
     "summary_not_checked": _steps(
         _drop_summary_checks, _set("summary_check.status", "not_checked")
@@ -269,7 +310,7 @@ VERIFIED_BREAKS = {
     "payment_failed": _steps(
         _set("payment.status", "failed"),
         _set("payment.payment_id", None),
-        _set("lifecycle.5.status", "failed"),
+        _set("events.5.status", "failed"),
     ),
 }
 
@@ -278,28 +319,30 @@ VERIFIED_BREAKS = {
 def test_verified_condition_is_enforced(name: str) -> None:
     receipt = clean_receipt()
     VERIFIED_BREAKS[name](receipt)
-    assert schema_errors(receipt), f"VERIFIED with {name} validated"
+    assert schema_errors(receipt) or ledger_problems(receipt), f"VERIFIED with {name} validated"
 
 
 @pytest.mark.parametrize("name", sorted(CONTRADICTIONS))
 def test_contradiction_is_rejected(name: str) -> None:
     broken = copy.deepcopy(SAMPLE)
     CONTRADICTIONS[name](broken)
-    assert schema_errors(broken), f"{name} validated"
+    assert schema_errors(broken) or ledger_problems(broken), f"{name} validated"
 
 
 def test_clean_order_is_verified() -> None:
     receipt = clean_receipt()
     assert schema_errors(receipt) == []
     assert xref_problems(receipt) == []
+    assert ledger_problems(receipt) == []
 
 
 def test_failed_extractor_gives_issues_found() -> None:
     receipt = clean_receipt()
     _drop_summary_checks(receipt)
     receipt["summary_check"] = {"status": "error", "error": "extractor timed out"}
-    assert schema_errors(receipt), "VERIFIED with an unchecked summary validated"
+    assert ledger_problems(receipt), "VERIFIED with an unchecked summary passed"
     receipt["verdict"] = "ISSUES_FOUND"
     assert schema_errors(receipt) == []
+    assert ledger_problems(receipt) == []
     del receipt["summary_check"]["error"]
-    assert schema_errors(receipt), "an errored summary check without a message validated"
+    assert ledger_problems(receipt), "an errored summary check without a message passed"

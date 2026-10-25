@@ -413,7 +413,7 @@ Portal.onboarding = function (d, ui) {
 
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
-  d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, policies: d.policies };
+  d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, policies: d.policies, onboarding: d.onboarding };
   var brand = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>';
   if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });

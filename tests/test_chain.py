@@ -66,3 +66,9 @@ def test_garbage_line_breaks_chain(log: Path) -> None:
 def test_append_after_verify_keeps_chain_intact(log: Path) -> None:
     append({"ts": 9, "tool": "GUARD_BLOCK"}, log)
     assert verify(log).entries == 6
+
+
+def test_sample_log_fixture_is_intact() -> None:
+    status = verify(Path(__file__).resolve().parent.parent / "fixtures" / "sample_log.jsonl")
+    assert status.ok
+    assert status.entries == 9

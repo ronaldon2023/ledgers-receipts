@@ -98,7 +98,7 @@ section { display: flex; flex-direction: column; gap: 14px; }
 .btn.primary:hover { background: var(--brown-hover); border-color: var(--brown-hover); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--brown); text-decoration: underline; padding: 0 8px; }
 .passkey { border: 1.5px dashed var(--brown); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--sunk); }
-.attn { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; align-items: start; }
+.attn { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 
 /* Glance */
 .glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }

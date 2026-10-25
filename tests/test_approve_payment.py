@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -25,13 +26,17 @@ def db(tmp_path: Path) -> Path:
 
 
 def run_hook(db: Path, tool_input: object, **extra: str) -> str:
+    event = {"hook_event_name": "PreToolUse", "tool_name": TOOL, "tool_input": tool_input}
+    return run_raw(db, json.dumps(event), **extra)
+
+
+def run_raw(db: Path, stdin: str, **extra: str) -> str:
     env = {**os.environ, "BAKERY_DB": str(db), "CLAUDE_PROJECT_DIR": str(db.parent)}
     env.pop("RECEIPTS_APPROVAL_CENTS", None)
     env.update(extra)
-    event = {"hook_event_name": "PreToolUse", "tool_name": TOOL, "tool_input": tool_input}
     done = subprocess.run(
         [sys.executable, str(HOOK)],
-        input=json.dumps(event),
+        input=stdin,
         env=env,
         capture_output=True,
         text=True,
@@ -92,6 +97,33 @@ def test_non_integer_amount_asks(db: Path, cents: object) -> None:
 
 def test_threshold_override(db: Path) -> None:
     assert asked(run_hook(db, pay(80000), RECEIPTS_APPROVAL_CENTS="50000"))
+
+
+@pytest.mark.parametrize("tool_input", [None, "BILL-07", [150000]])
+def test_missing_or_non_dict_tool_input_asks(db: Path, tool_input: object) -> None:
+    assert "no tool input" in asked(run_hook(db, tool_input))
+
+
+def test_hook_error_asks(db: Path) -> None:
+    text = asked(run_raw(db, "{not json"))
+    assert "approval check failed (JSONDecodeError)" in text
+
+
+def test_non_numeric_threshold_asks_for_every_payment(db: Path) -> None:
+    text = asked(run_hook(db, pay(100), RECEIPTS_APPROVAL_CENTS="lots"))
+    assert "isn't a number" in text
+
+
+def test_bill_already_paid_is_flagged(db: Path) -> None:
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE bills SET status = 'paid' WHERE id = ?", (BILL_ID,))
+    conn.close()
+    assert "already marked paid" in asked(run_hook(db, pay(150000)))
+
+
+def test_short_account_is_flagged(db: Path) -> None:
+    text = asked(run_hook(db, pay(150000, "1234")))
+    assert "Pay to account: (too short to be an account number)." in text
 
 
 def test_hooks_json_registers_approval() -> None:

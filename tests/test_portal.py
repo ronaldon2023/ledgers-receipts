@@ -387,3 +387,14 @@ def test_rules_step_has_no_notes() -> None:
     assert 'class="muted small"' not in html
     assert 'class="note"' not in html
     assert "Separate names with commas" not in html
+
+
+@needs_node
+def test_demo_buttons_sit_in_sidebar_above_the_date() -> None:
+    out = run([{"data": data("pending"), "ui": {"view": "dashboard", "filter": "all"}}])[0]
+    side = out["side"]
+    assert (
+        side.index(">Start onboarding<") < side.index(">Restart demo<") < side.index("Sun 25 Oct")
+    )
+    assert "Start onboarding" not in out["main"] and "Restart demo" not in out["main"]
+    assert "Run setup again" not in side

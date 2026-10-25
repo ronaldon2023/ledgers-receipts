@@ -209,9 +209,7 @@ Portal.feedHtml = function (feed, ui) {
 
 /* ---------- pages ---------- */
 Portal.header = function (title, sub) {
-  return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1>' + (sub ? '<p>' + Portal.esc(sub) + '</p>' : '') + '</div>' +
-    '<div class="actions"><button type="button" class="btn" data-onb="again">Start onboarding</button>' +
-    '<button type="button" class="btn" data-act="reset">Restart demo</button></div></header>';
+  return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1>' + (sub ? '<p>' + Portal.esc(sub) + '</p>' : '') + '</div></header>';
 };
 Portal.dashboard = function (d, ui) {
   var esc = Portal.esc, f = d.feed, g = f.glance, cards = Portal.attention(f, ui);
@@ -344,7 +342,7 @@ Portal.onboarding = function (d, ui) {
       '<h3>Payment</h3>' + num("r-threshold", "Ask me before paying more than", r.threshold_cents) +
       '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.budget_cents) +
       num("r-floor", "Always keep in the bank", r.floor_cents) +
-      '<h3>Always on</h3><ul class="checks"><li><span class="ic-ok">✓</span><span><b>Email only addresses on file</b></span></li>' +
+      '<h3>Always on</h3><ul class="checks plain"><li><span class="ic-ok">✓</span><span><b>Email only addresses on file</b></span></li>' +
       '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file</b></span></li></ul>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="rules">Save rules</button>' + back + '</div>';
   } else {
@@ -370,8 +368,10 @@ Portal.page = function (d, ui) {
   var side = brand +
     [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
       return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
-    }).join("") + '<div class="meta"><span>' + esc(Portal.day(d.feed.as_of) + " · " + Portal.time(d.feed.as_of)) + '</span><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
-    '<span>Signed in as ' + esc(d.feed.owner) + ' · passkey</span><button type="button" data-onb="again">Run setup again</button></div>';
+    }).join("") + '<div class="navbtns"><button type="button" class="btn" data-onb="again">Start onboarding</button>' +
+    '<button type="button" class="btn" data-act="reset">Restart demo</button></div>' +
+    '<div class="meta"><span>' + esc(Portal.day(d.feed.as_of) + " · " + Portal.time(d.feed.as_of)) + '</span><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
+    '<span>Signed in as ' + esc(d.feed.owner) + ' · passkey</span></div>';
   return { side: side, main: main };
 };
 

@@ -311,8 +311,17 @@ Portal.receiptBody = function (r) {
   }).join("") + '</ul></section>';
   return h;
 };
+// On ?state=live each order has its own receipt (receipt_live_<order>.json, written by
+// python -m receipts.verify). Only plain order numbers become file names.
+Portal.orderReceiptFile = function (state, num) {
+  return state === "live" && /^[A-Za-z0-9_-]{1,40}$/.test(num || "") ? "receipt_live_" + num + ".json" : null;
+};
+Portal.receiptFor = function (d, num) {
+  var mine = function (r) { return r && r.order && r.order.order_number === num ? r : null; };
+  return mine(d.orderReceipt) || mine(d.receipt); // its own file first, then the feed's receipt
+};
 Portal.order = function (d, num) {
-  var esc = Portal.esc, f = d.feed, r = d.receipt && d.receipt.order.order_number === num ? d.receipt : null;
+  var esc = Portal.esc, f = d.feed, r = Portal.receiptFor(d, num);
   var o = (f.orders || []).filter(function (x) { return x.order_number === num; })[0];
   if (!o && !r) return Portal.header("Order not found", num) + '<div class="card"><p><a href="#dashboard">Back to the dashboard</a></p></div>';
   var seller = r ? r.order.seller : { name: o.seller, email: o.seller_email }, placed = r ? r.order.order_date : o.placed_at;
@@ -448,7 +457,7 @@ Portal.onboarding = function (d, ui) {
 
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
-  d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, policies: d.policies, onboarding: d.onboarding };
+  d = { feed: Portal.visible(d.feed, ui), receipt: d.receipt, orderReceipt: d.orderReceipt, policies: d.policies, onboarding: d.onboarding };
   var brand = '<div class="brand"><b>Ledger</b></div>';
   var collapsed = !!ui.navCollapsed;
   if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
@@ -526,13 +535,17 @@ if (typeof document !== "undefined") (function () {
   function load() {
     // onboarding.json is the owner's receipts-onboarding.json; until onboarding runs there is none.
     var onb = get("onboarding.json").catch(function () { return "null"; });
-    return Promise.all([get("feed_" + ui.state + ".json"), get("policies.json"), onb]).then(function (t) {
-      var feed = JSON.parse(t[0]), answers = null;
+    // On an order page in live mode, that order's own receipt; a missing file falls back to the feed row.
+    var h = (location.hash || "").slice(1), own = Portal.orderReceiptFile(ui.state, h.indexOf("order/") === 0 ? h.slice(6) : "");
+    var mine = own ? get(own).catch(function () { return "null"; }) : Promise.resolve("null");
+    return Promise.all([get("feed_" + ui.state + ".json"), get("policies.json"), onb, mine]).then(function (t) {
+      var feed = JSON.parse(t[0]), answers = null, orderReceipt = null;
       try { answers = JSON.parse(t[2]); } catch (e) { /* a half-written file: ignore it */ }
+      try { orderReceipt = JSON.parse(t[3]); } catch (e) { /* being rewritten: try again next second */ }
       return (feed.receipt ? get(feed.receipt) : Promise.resolve("null")).then(function (rt) {
         if (t.join("") + rt === last) return; // unchanged: keep open sections open
         last = t.join("") + rt;
-        data = { feed: feed, receipt: JSON.parse(rt), policies: JSON.parse(t[1]), onboarding: answers };
+        data = { feed: feed, receipt: JSON.parse(rt), orderReceipt: orderReceipt, policies: JSON.parse(t[1]), onboarding: answers };
         render();
       });
     }).catch(function (e) {
@@ -650,7 +663,7 @@ if (typeof document !== "undefined") (function () {
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && ui.confirming) set({ confirming: null });
   });
-  window.addEventListener("hashchange", function () { render(); window.scrollTo(0, 0); });
+  window.addEventListener("hashchange", function () { render(); window.scrollTo(0, 0); load(); }); // load: an order's own receipt
   load();
   setInterval(load, 1000);
 })();

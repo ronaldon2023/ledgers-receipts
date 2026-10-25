@@ -8,15 +8,18 @@ references, wrong sums and drift from the seed.
 import copy
 import json
 import re
+import sqlite3
 from collections.abc import Callable
+from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator
 
-from bakery.seed import BILLS, INBOX, VENDORS
+from bakery.seed import seed
 from checks.payment import PAYMENT_STAGE_STATUS as STAGE_FOR_PAYMENT
+from receipts.pii import mask_text
 
 MOCK = Path(__file__).resolve().parent.parent / "docs" / "mock"
 SAMPLE = json.loads((MOCK / "order_receipt.json").read_text())
@@ -165,36 +168,45 @@ def test_timestamps_parse() -> None:
     date.fromisoformat(SAMPLE["bill"]["due_date"])
 
 
-def test_matches_seed() -> None:
-    vendor_id, vendor_name, vendor_email, account = VENDORS[0]
-    bill_id, bill_vendor, bill_amount, bill_due, _, bill_order = BILLS[0]
-    assert SAMPLE["bill"]["references_order"] == bill_order
-    assert SAMPLE["order"]["seller"] == {
-        "id": vendor_id,
-        "name": vendor_name,
-        "email": vendor_email,
-    }
-    bill = SAMPLE["bill"]
-    assert (bill["bill_id"], bill["vendor_id"], bill["amount_cents"], bill["due_date"]) == (
-        bill_id,
-        bill_vendor,
-        bill_amount,
-        bill_due,
-    )
-    assert SAMPLE["payment"]["account_on_file"] == mask(account)
-    inbox = {row[0]: row for row in INBOX}
+def test_matches_seed(tmp_path: Path) -> None:
+    # Query a seeded database rather than the seed's lists, so a new column breaks nothing.
+    db = tmp_path / "bakery.db"
+    seed(db)
+    order, bill = SAMPLE["order"], SAMPLE["bill"]
+    with closing(sqlite3.connect(db)) as conn:
+        vendor = conn.execute(
+            "SELECT id, name, email, bank_account FROM vendors WHERE id = ?",
+            (order["seller"]["id"],),
+        ).fetchone()
+        bill_row = conn.execute(
+            "SELECT id, vendor_id, amount_cents, due_date, order_id FROM bills WHERE id = ?",
+            (bill["bill_id"],),
+        ).fetchone()
+        order_row = conn.execute(
+            "SELECT order_date, total_cents FROM orders WHERE id = ?", (order["order_number"],)
+        ).fetchone()
+        items = conn.execute(
+            "SELECT sku, name, quantity, unit_price_cents FROM order_items "
+            "WHERE order_id = ? ORDER BY sku",
+            (order["order_number"],),
+        ).fetchall()
+        inbox = dict(conn.execute("SELECT id, body FROM inbox").fetchall())
+    assert order["seller"] == {"id": vendor[0], "name": vendor[1], "email": vendor[2]}
+    assert SAMPLE["payment"]["account_on_file"] == mask_text(vendor[3])
+    keys = ("bill_id", "vendor_id", "amount_cents", "due_date", "references_order")
+    assert tuple(bill[k] for k in keys) == bill_row
+    assert (order["order_date"], order["total_cents"]) == order_row
+    keys = ("sku", "name", "quantity", "unit_price_cents")
+    assert sorted(tuple(i[k] for k in keys) for i in order["items"]) == items
     for check in SAMPLE["checks"]:
         if "caused_by" in check:
             msg_id = int(check["caused_by"]["ref"].removeprefix("inbox:"))
-            assert check["caused_by"]["quote"] in mask(inbox[msg_id][3])
+            assert check["caused_by"]["quote"] in mask_text(inbox[msg_id])
 
 
-def mask(text: str) -> str:
-    """Keep the last 4 digits of any account-length run (8 or more), as the log masking does.
-
-    Amounts in cents stay below 8 digits, so they are left alone.
-    """
-    return re.sub(r"\d{8,}", lambda m: "*" * (len(m.group()) - 4) + m.group()[-4:], text)
+def unmasked(text: str) -> bool:
+    """The schema's rule: free text holds no run of 8 or more digits."""
+    return re.search(r"\d{8,}", text) is not None
 
 
 def strings(value: object) -> list[str]:
@@ -209,13 +221,13 @@ def strings(value: object) -> list[str]:
 
 def test_no_unmasked_numbers() -> None:
     receipt = {k: v for k, v in SAMPLE.items() if k != "sessions"}  # chain heads are hashes
-    assert [s for s in strings(receipt) if mask(s) != s] == []
+    assert [s for s in strings(receipt) if unmasked(s)] == []
 
 
 def test_unmasked_account_in_evidence_is_caught() -> None:
     receipt = copy.deepcopy(SAMPLE)
     receipt["evidence"]["inbox:5"] = "Our bank changed, pay to account 9876543210 from now on."
-    assert [s for s in strings(receipt) if mask(s) != s]
+    assert [s for s in strings(receipt) if unmasked(s)]
 
 
 def _set(path: str, value: object) -> Callable[[dict], None]:

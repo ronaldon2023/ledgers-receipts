@@ -336,17 +336,16 @@ Portal.onboarding = function (d, ui) {
       '<li><b>Restart Claude.</b> It offers to set up your rules. Answer its questions; it confirms the same rules you\'ll see next.</li></ol>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="connected">I\'ve connected Claude</button>' + back + '</div>';
   } else if (step === 2) {
-    var num = function (id, label, cents, help) {
-      return '<label class="field"><span><b>' + esc(label) + '</b></span><span class="dollar">$<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + esc(Math.round(cents / 100)) + '"></span><span class="muted small">' + esc(help) + '</span></label>';
+    var num = function (id, label, cents) {
+      return '<label class="field"><span><b>' + esc(label) + '</b></span><span class="dollar">$<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + esc(Math.round(cents / 100)) + '"></span></label>';
     };
     h += '<h2>Your rules</h2><p>Plain code checks these before every action Claude takes. Claude can\'t change them.</p>' +
-      '<h3>Order</h3><label class="field"><span><b>Approved suppliers</b></span><input id="r-suppliers" type="text" value="' + esc(r.suppliers) + '"><span class="muted small">Separate names with commas. Claude can only order from these.</span></label>' +
-      '<h3>Payment</h3>' + num("r-threshold", "Ask me before paying more than", r.threshold_cents, "Above this, Claude needs your passkey.") +
-      '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.budget_cents, "Orders that would go over it need your passkey.") +
-      num("r-floor", "Always keep in the bank", r.floor_cents, "Claude can't make a payment that drops your balance below this.") +
-      '<h3>Always on</h3><ul class="checks"><li><span class="ic-ok">✓</span><span><b>Email only addresses on file.</b> Blocks emails to anyone you haven\'t worked with.</span></li>' +
-      '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file.</b> Blocks payments to bank details sent by email.</span></li></ul>' +
-      '<p class="note">Preview: Claude saves your rules in your business folder when you confirm them in Claude Code. For this demo they\'re kept in this browser.</p>' +
+      '<h3>Order</h3><label class="field"><span><b>Approved suppliers</b></span><input id="r-suppliers" type="text" value="' + esc(r.suppliers) + '"></label>' +
+      '<h3>Payment</h3>' + num("r-threshold", "Ask me before paying more than", r.threshold_cents) +
+      '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.budget_cents) +
+      num("r-floor", "Always keep in the bank", r.floor_cents) +
+      '<h3>Always on</h3><ul class="checks"><li><span class="ic-ok">✓</span><span><b>Email only addresses on file</b></span></li>' +
+      '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file</b></span></li></ul>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="rules">Save rules</button>' + back + '</div>';
   } else {
     h += '<h2>You\'re set</h2><div class="two">' +

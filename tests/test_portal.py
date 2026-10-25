@@ -379,3 +379,11 @@ def test_glance_tiles_drop_budget_left_and_balance_note() -> None:
     assert "98% used</span>" in html
     assert " left</span>" not in html
     assert "Floor $2,000" not in html and "if BILL-07 is paid" not in html
+
+
+@needs_node
+def test_rules_step_has_no_notes() -> None:
+    html = onboarding(2)["main"]
+    assert 'class="muted small"' not in html
+    assert 'class="note"' not in html
+    assert "Separate names with commas" not in html

@@ -15,6 +15,13 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE.parent.parent / "fixtures" / "portal"
 SERVED = {".html", ".css", ".js", ".json"}
 ONBOARDING = "receipts-onboarding.json"
+ONBOARDING_URL = "/data/onboarding.json"
+
+
+def host_allowed(host: str | None, port: int) -> bool:
+    """Only this machine's own names: a page on another site that points its domain at
+    127.0.0.1 (DNS rebinding) sends its own Host, so it can't read the owner's rules."""
+    return host in (f"127.0.0.1:{port}", f"localhost:{port}")
 
 
 def resolve(
@@ -22,9 +29,14 @@ def resolve(
 ) -> Path | None:
     """Map a URL path to a file the portal may serve, or None if it is off limits."""
     path = unquote(urlsplit(url_path).path)
-    if path == "/data/onboarding.json":
-        target = (business or Path.cwd()) / ONBOARDING
-        return target if target.is_file() else None
+    if path == ONBOARDING_URL:
+        folder = (business or Path.cwd()).resolve()
+        target = (folder / ONBOARDING).resolve()  # a symlink must not lead anywhere else
+        return (
+            target
+            if target.parent == folder and target.name == ONBOARDING and target.is_file()
+            else None
+        )
     root, rest = (data, path[len("/data/") :]) if path.startswith("/data/") else (here, path)
     target = (root / rest.lstrip("/")).resolve()
     if target == root:
@@ -40,6 +52,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def translate_path(self, path: str) -> str:
         target = resolve(path, business=self.business)
         return str(target) if target else str(HERE / "__not_found__")
+
+    def do_GET(self) -> None:
+        if not host_allowed(self.headers.get("Host"), self.server.server_address[1]):
+            self.send_error(403, "Open the portal at 127.0.0.1 or localhost")
+            return
+        if self.path.split("?")[0] == ONBOARDING_URL and not resolve(
+            self.path, business=self.business
+        ):
+            self.send_response(204)  # not onboarded yet: empty, so the browser logs no error
+            self.end_headers()
+            return
+        super().do_GET()
+
+    def do_HEAD(self) -> None:
+        if not host_allowed(self.headers.get("Host"), self.server.server_address[1]):
+            self.send_error(403)
+            return
+        super().do_HEAD()
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")

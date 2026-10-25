@@ -305,7 +305,7 @@ Portal.INSTALL = [
 // them. Only well-formed values count; anything else leaves the policies file's value in place.
 Portal.onboardedRules = function (onb) {
   var r = ((onb || {}).payment_rules) || {}, out = {};
-  var cents = function (v) { return typeof v === "number" && isFinite(v) && v >= 0; };
+  var cents = function (v) { return Number.isSafeInteger(v) && v >= 0; }; // money is integer cents
   if (cents(r.approval_threshold_cents)) out.threshold_cents = r.approval_threshold_cents;
   if (cents(r.monthly_budget_cents)) out.budget_cents = r.monthly_budget_cents;
   if (r.monthly_budget_cents === null) out.no_budget = true; // the owner said "no limit"
@@ -317,7 +317,11 @@ Portal.onboardedRules = function (onb) {
 };
 // The policies file with the owner's onboarding answers written over it.
 Portal.withOnboarding = function (pol, onb) {
-  var r = Portal.onboardedRules(onb), $ = Portal.dollars;
+  var r = Portal.onboardedRules(onb);
+  // Exact to the cent: an owner who chose $250.50 must not see $251.
+  var $ = function (c) {
+    return c % 100 ? "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2 }) : Portal.dollars(c);
+  };
   var over = {
     "POL-PAY-THRESHOLD": r.threshold_cents == null ? null : { limit_cents: r.threshold_cents,
       title: "Payments over " + $(r.threshold_cents) + " need owner approval", setting: $(r.threshold_cents) + " limit" },
@@ -341,7 +345,7 @@ Portal.ruleDefaults = function (pol, onb) {
   return {
     suppliers: ((by["POL-ORDER-VENDOR"] || {}).setting || "").replace(/^Approved:\s*/, ""),
     threshold_cents: limit("POL-PAY-THRESHOLD", 50000), budget_cents: limit("POL-BUDGET-MONTHLY", 300000),
-    floor_cents: limit("POL-BANK-FLOOR", 200000)
+    floor_cents: limit("POL-BANK-FLOOR", 200000), no_budget: !!Portal.onboardedRules(onb).no_budget
   };
 };
 Portal.onboarding = function (d, ui) {
@@ -380,7 +384,7 @@ Portal.onboarding = function (d, ui) {
   } else {
     h += '<h2>You\'re set</h2><div class="two">' +
       '<div class="quote"><b>Claude does the work</b>Orders supplies, pays bills and answers email, using the order and payment skills.</div>' +
-      '<div class="quote"><b>Code checks every step</b>Approved suppliers: ' + esc(r.suppliers || "none yet") + '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ' + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</div>' +
+      '<div class="quote"><b>Code checks every step</b>Approved suppliers: ' + esc(r.suppliers || "none yet") + (r.no_budget ? '. No monthly budget limit. Keep ' : '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ') + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</div>' +
       '<div class="quote"><b>You approve</b>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</div>' +
       '<div class="quote"><b>Alerts</b>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</div></div>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="finish">Go to dashboard</button>' + back + '</div>';

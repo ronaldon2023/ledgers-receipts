@@ -15,7 +15,7 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 from bakery.seed import POLICIES
-from render.portal.__main__ import resolve
+from render.portal.__main__ import host_allowed, resolve
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "fixtures" / "portal"
@@ -135,6 +135,21 @@ def test_server_serves_only_the_onboarding_file_from_the_business_folder(tmp_pat
     )
     assert resolve("/data/receipts-onboarding.json", business=tmp_path) is None
     assert resolve("/data/../bakery.db", business=tmp_path) is None
+
+
+def test_onboarding_symlink_cannot_lead_elsewhere(tmp_path: Path) -> None:
+    business, outside = tmp_path / "business", tmp_path / "outside"
+    business.mkdir()
+    outside.mkdir()
+    (outside / "secret.txt").write_text("token=abc123")
+    (business / "receipts-onboarding.json").symlink_to(outside / "secret.txt")
+    assert resolve("/data/onboarding.json", business=business) is None
+
+
+def test_server_answers_only_to_this_machines_names() -> None:
+    assert host_allowed("127.0.0.1:8000", 8000) and host_allowed("localhost:8000", 8000)
+    for host in ["evil.example:8000", "127.0.0.1:9000", "127.0.0.1", None]:
+        assert not host_allowed(host, 8000), host
 
 
 # ---------- rendering ----------
@@ -373,6 +388,8 @@ def test_policies_and_rules_follow_the_onboarding_file() -> None:
         None,
         {},
         {"payment_rules": {"approval_threshold_cents": "250", "monthly_budget_cents": "1"}},
+        {"payment_rules": {"approval_threshold_cents": 25050.5, "monthly_budget_cents": 1e300}},
+        {"payment_rules": {"approval_threshold_cents": -100, "approved_suppliers": [{"name": 7}]}},
     ],
 )
 def test_missing_or_odd_onboarding_answers_keep_the_policies_file(answers: object) -> None:
@@ -388,6 +405,15 @@ def test_no_budget_limit_from_onboarding_shows_as_no_limit() -> None:
     d["onboarding"] = {"payment_rules": {"monthly_budget_cents": None}}
     policies = page(d, "policies")
     assert "No limit" in policies and "$3,000 / month" not in policies
+    summary = run([{"data": d, "ui": {"view": "onboarding", "onboard": {"step": 3}}}])[0]["main"]
+    assert "No monthly budget limit" in summary and "$3,000 a month" not in summary
+
+
+@needs_node
+def test_threshold_shows_to_the_cent() -> None:
+    d = data("pending")
+    d["onboarding"] = {"payment_rules": {"approval_threshold_cents": 25050}}
+    assert "Payments over $250.50 need owner approval" in page(d, "policies")
 
 
 @needs_node

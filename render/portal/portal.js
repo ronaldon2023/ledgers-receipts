@@ -282,7 +282,7 @@ Portal.POLICY_GROUPS = [
   ["guard", "Guards"], ["order", "Order policy"], ["payment", "Payment policy"], ["budget", "Budget policy"]
 ];
 Portal.policies = function (d) {
-  var esc = Portal.esc, pol = d.policies || { guards: [], policies: [] };
+  var esc = Portal.esc, pol = Portal.withOnboarding(d.policies, d.onboarding);
   var h = Portal.header("Policies", "The rules Claude must follow. Plain code checks them before every action; Claude can't change them.");
   Portal.POLICY_GROUPS.forEach(function (g) {
     var list = g[0] === "guard" ? pol.guards : pol.policies.filter(function (p) { return p.kind === g[0]; });
@@ -301,10 +301,42 @@ Portal.INSTALL = [
   "/plugin marketplace add ronaldon2023/ledgers-receipts",
   "/plugin install ledgers-receipts@the-ledgers"
 ];
-// Starting values for the rules step, read from the policies file.
-Portal.ruleDefaults = function (pol) {
+// The owner's answers from Claude Code onboarding (receipts-onboarding.json), when the server has
+// them. Only well-formed values count; anything else leaves the policies file's value in place.
+Portal.onboardedRules = function (onb) {
+  var r = ((onb || {}).payment_rules) || {}, out = {};
+  var cents = function (v) { return typeof v === "number" && isFinite(v) && v >= 0; };
+  if (cents(r.approval_threshold_cents)) out.threshold_cents = r.approval_threshold_cents;
+  if (cents(r.monthly_budget_cents)) out.budget_cents = r.monthly_budget_cents;
+  if (r.monthly_budget_cents === null) out.no_budget = true; // the owner said "no limit"
+  if (Array.isArray(r.approved_suppliers)) {
+    var names = r.approved_suppliers.map(function (s) { return s && typeof s.name === "string" ? s.name : ""; });
+    if (names.filter(Boolean).length) out.suppliers = names.filter(Boolean).join(", ");
+  }
+  return out;
+};
+// The policies file with the owner's onboarding answers written over it.
+Portal.withOnboarding = function (pol, onb) {
+  var r = Portal.onboardedRules(onb), $ = Portal.dollars;
+  var over = {
+    "POL-PAY-THRESHOLD": r.threshold_cents == null ? null : { limit_cents: r.threshold_cents,
+      title: "Payments over " + $(r.threshold_cents) + " need owner approval", setting: $(r.threshold_cents) + " limit" },
+    "POL-BUDGET-MONTHLY": r.no_budget ? { setting: "No limit" }
+      : r.budget_cents == null ? null : { limit_cents: r.budget_cents, setting: $(r.budget_cents) + " / month" },
+    "POL-ORDER-VENDOR": r.suppliers == null ? null : { setting: "Approved: " + r.suppliers }
+  };
+  pol = pol || { guards: [], policies: [] };
+  return { guards: pol.guards || [], policies: (pol.policies || []).map(function (p) {
+    var o = over[p.id], q = {}, k;
+    for (k in p) q[k] = p[k];
+    for (k in o || {}) q[k] = o[k];
+    return q;
+  }) };
+};
+// Starting values for the rules step: the policies file, then the owner's onboarding answers.
+Portal.ruleDefaults = function (pol, onb) {
   var by = {};
-  ((pol || {}).policies || []).forEach(function (p) { by[p.id] = p; });
+  Portal.withOnboarding(pol, onb).policies.forEach(function (p) { by[p.id] = p; });
   var limit = function (id, c) { return by[id] && by[id].limit_cents != null ? by[id].limit_cents : c; };
   return {
     suppliers: ((by["POL-ORDER-VENDOR"] || {}).setting || "").replace(/^Approved:\s*/, ""),
@@ -313,7 +345,7 @@ Portal.ruleDefaults = function (pol) {
   };
 };
 Portal.onboarding = function (d, ui) {
-  var esc = Portal.esc, o = ui.onboard || {}, step = o.step || 0, r = o.rules || Portal.ruleDefaults(d.policies);
+  var esc = Portal.esc, o = ui.onboard || {}, step = o.step || 0, r = o.rules || Portal.ruleDefaults(d.policies, d.onboarding);
   var back = '<button type="button" class="btn ghost" data-onb="back">Back</button>';
   var h = '<header class="top"><div><h1>Set up Ledger</h1><p>' + esc(d.feed.business) + ' · step ' + (step + 1) + ' of 4</p></div></header>' +
     '<ol class="stages" aria-label="Setup steps">' + Portal.ONBOARD_STEPS.map(function (s, i) {
@@ -415,12 +447,15 @@ if (typeof document !== "undefined") (function () {
     });
   }
   function load() {
-    return Promise.all([get("feed_" + ui.state + ".json"), get("policies.json")]).then(function (t) {
-      var feed = JSON.parse(t[0]);
+    // onboarding.json is the owner's receipts-onboarding.json; until onboarding runs there is none.
+    var onb = get("onboarding.json").catch(function () { return "null"; });
+    return Promise.all([get("feed_" + ui.state + ".json"), get("policies.json"), onb]).then(function (t) {
+      var feed = JSON.parse(t[0]), answers = null;
+      try { answers = JSON.parse(t[2]); } catch (e) { /* a half-written file: ignore it */ }
       return (feed.receipt ? get(feed.receipt) : Promise.resolve("null")).then(function (rt) {
         if (t.join("") + rt === last) return; // unchanged: keep open sections open
         last = t.join("") + rt;
-        data = { feed: feed, receipt: JSON.parse(rt), policies: JSON.parse(t[1]) };
+        data = { feed: feed, receipt: JSON.parse(rt), policies: JSON.parse(t[1]), onboarding: answers };
         render();
       });
     }).catch(function (e) {

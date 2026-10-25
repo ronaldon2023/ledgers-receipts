@@ -126,6 +126,17 @@ def test_server_serves_only_portal_files() -> None:
     assert resolve("/__main__.py") is None
 
 
+def test_server_serves_only_the_onboarding_file_from_the_business_folder(tmp_path: Path) -> None:
+    assert resolve("/data/onboarding.json", business=tmp_path) is None  # not onboarded yet
+    (tmp_path / "receipts-onboarding.json").write_text("{}")
+    (tmp_path / "bakery.db").write_text("")
+    assert (
+        resolve("/data/onboarding.json", business=tmp_path) == tmp_path / "receipts-onboarding.json"
+    )
+    assert resolve("/data/receipts-onboarding.json", business=tmp_path) is None
+    assert resolve("/data/../bakery.db", business=tmp_path) is None
+
+
 # ---------- rendering ----------
 
 
@@ -326,6 +337,57 @@ def test_onboarding_rules_default_from_policies_and_escape_input() -> None:
     done = onboarding(3, rules)["main"] + onboarding(2, rules)["main"]
     assert "<script" not in done
     assert "Anything over $500" in done
+
+
+# The shape the Claude Code onboarding skill writes (receipts-onboarding/0).
+ANSWERS = {
+    "schema": "receipts-onboarding/0",
+    "payment_rules": {
+        "approval_threshold_cents": 25000,
+        "monthly_budget_cents": 400000,
+        "approved_suppliers": [
+            {"name": "Flour Co", "email_domain": "flourco.example", "account_last4": "4471"},
+            {"name": XSS, "email_domain": "x.example", "account_last4": "0000"},
+        ],
+    },
+}
+
+
+@needs_node
+def test_policies_and_rules_follow_the_onboarding_file() -> None:
+    d = data("pending")
+    d["onboarding"] = ANSWERS
+    policies = page(d, "policies")
+    assert "Payments over $250 need owner approval" in policies and "$250 limit" in policies
+    assert "$4,000 / month" in policies and "Approved: Flour Co, " in policies
+    assert "$500" not in policies
+    rules = run([{"data": d, "ui": {"view": "onboarding", "onboard": {"step": 2}}}])[0]["main"]
+    assert 'inputmode="numeric" value="250"' in rules
+    assert "<script" not in policies + rules
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "answers",
+    [
+        None,
+        {},
+        {"payment_rules": {"approval_threshold_cents": "250", "monthly_budget_cents": "1"}},
+    ],
+)
+def test_missing_or_odd_onboarding_answers_keep_the_policies_file(answers: object) -> None:
+    d = data("pending")
+    d["onboarding"] = answers
+    policies = page(d, "policies")
+    assert "Payments over $500 need owner approval" in policies and "$3,000 / month" in policies
+
+
+@needs_node
+def test_no_budget_limit_from_onboarding_shows_as_no_limit() -> None:
+    d = data("pending")
+    d["onboarding"] = {"payment_rules": {"monthly_budget_cents": None}}
+    policies = page(d, "policies")
+    assert "No limit" in policies and "$3,000 / month" not in policies
 
 
 @needs_node

@@ -8,12 +8,11 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from mcp.server.mcpserver import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.fastmcp import FastMCP
 
 from bakesupply.seed import DB_PATH
 
-mcp = MCPServer("bakesupply")
+mcp = FastMCP("bakesupply")
 
 
 def _connect(db_path: Path | None, read_only: bool = True) -> sqlite3.Connection:
@@ -79,14 +78,6 @@ def list_orders(db_path: Path | None = None) -> list[dict[str, Any]]:
         return [dict(r) for r in conn.execute("SELECT * FROM orders ORDER BY id")]
 
 
-def _expected(fn, *args: Any) -> Any:
-    """Run fn, turning rule violations into ToolErrors so the agent sees the reason."""
-    try:
-        return fn(*args)
-    except ValueError as exc:
-        raise ToolError(str(exc)) from exc
-
-
 @mcp.tool(name="list_ingredients")
 def _list_ingredients() -> list[dict[str, Any]]:
     """List ingredients with unit, price per unit in cents, stock and supplier."""
@@ -96,13 +87,13 @@ def _list_ingredients() -> list[dict[str, Any]]:
 @mcp.tool(name="get_price")
 def _get_price(ingredient: str, quantity: int) -> dict[str, Any]:
     """Quote the total cost in cents for a quantity of an ingredient, without ordering."""
-    return _expected(get_price, ingredient, quantity)
+    return get_price(ingredient, quantity)
 
 
 @mcp.tool(name="place_order")
 def _place_order(ingredient: str, quantity: int) -> dict[str, Any]:
     """Order a quantity of an ingredient. Reduces stock and returns the order with total_cents."""
-    return _expected(place_order, ingredient, quantity)
+    return place_order(ingredient, quantity)
 
 
 @mcp.tool(name="list_orders")

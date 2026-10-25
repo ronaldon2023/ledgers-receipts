@@ -58,7 +58,7 @@ def asked(out: str) -> str:
     return decision["permissionDecisionReason"]
 
 
-@pytest.mark.parametrize("cents", [80000, 100000])
+@pytest.mark.parametrize("cents", [40000, 50000])
 def test_at_or_under_threshold_is_silent(db: Path, cents: int) -> None:
     assert run_hook(db, pay(cents)) == ""
 
@@ -98,7 +98,8 @@ def test_non_integer_amount_asks(db: Path, cents: object) -> None:
 
 
 def test_threshold_override(db: Path) -> None:
-    assert asked(run_hook(db, pay(80000), RECEIPTS_APPROVAL_CENTS="50000"))
+    assert asked(run_hook(db, pay(30000), RECEIPTS_APPROVAL_CENTS="20000"))
+    assert run_hook(db, pay(80000), RECEIPTS_APPROVAL_CENTS="100000") == ""
 
 
 @pytest.mark.parametrize("tool_input", [None, "BILL-07", [150000]])
@@ -197,31 +198,50 @@ def onboard(folder: Path, rules: object, name: str = "receipts-onboarding.json")
 
 
 def test_onboarding_threshold_is_used(db: Path) -> None:
-    onboard(db.parent, {"approval_threshold_cents": 50000})
+    onboard(db.parent, {"approval_threshold_cents": 70000})
     text = asked(run_hook(db, pay(80000)))
-    assert "Payments over $500.00 need the owner's approval (set in onboarding)." in text
-    assert run_hook(db, pay(40000)) == ""
+    assert "Payments over $700.00 need the owner's approval (set in onboarding)." in text
+    assert run_hook(db, pay(60000)) == ""
 
 
 def test_no_onboarding_file_uses_default(db: Path) -> None:
-    assert run_hook(db, pay(80000)) == ""
-    text = asked(run_hook(db, pay(150000)))
-    assert "Payments over $1,000.00 need the owner's approval (default)." in text
+    assert run_hook(db, pay(40000)) == ""
+    text = asked(run_hook(db, pay(80000)))
+    assert "Payments over $500.00 need the owner's approval (default)." in text
 
 
 @pytest.mark.parametrize("rules", [{}, {"approval_threshold_cents": None}])
 def test_onboarding_without_threshold_uses_default(db: Path, rules: dict) -> None:
     onboard(db.parent, rules)
-    assert run_hook(db, pay(100000)) == ""
-    assert "(default)" in asked(run_hook(db, pay(100001)))
+    assert run_hook(db, pay(50000)) == ""
+    assert "(default)" in asked(run_hook(db, pay(50001)))
 
 
-@pytest.mark.parametrize("body", ["{not json", "[1, 2]", json.dumps({"payment_rules": [50000]})])
-def test_unreadable_onboarding_asks_for_every_payment(db: Path, body: str) -> None:
+def test_onboarding_without_payment_rules_uses_default(db: Path) -> None:
+    onboard(db.parent, json.dumps({"schema": "receipts-onboarding/0"}))
+    assert run_hook(db, pay(50000)) == ""
+    assert "over $500.00 need the owner's approval (default)." in asked(run_hook(db, pay(80000)))
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        ("{not json", "not valid JSON"),
+        ("[1, 2]", "not a JSON object"),
+        (json.dumps({"payment_rules": [50000]}), "payment_rules isn't an object"),
+        (json.dumps({"payment_rules": None}), "payment_rules isn't an object"),
+    ],
+)
+def test_unreadable_onboarding_asks_for_every_payment(db: Path, body: str, why: str) -> None:
     onboard(db.parent, body)
-    text = asked(run_hook(db, pay(80000)))
-    assert "The onboarding answers couldn't be read" in text
+    text = asked(run_hook(db, pay(100)))
+    assert f"The onboarding answers couldn't be read ({why})" in text
     assert "every payment needs approval" in text
+
+
+def test_onboarding_not_utf8_asks_for_every_payment(db: Path) -> None:
+    (db.parent / "receipts-onboarding.json").write_bytes(b'{"schema": "caf\xe9"}')
+    assert "couldn't be read (not valid JSON)" in asked(run_hook(db, pay(100)))
 
 
 def test_onboarding_that_cannot_be_opened_asks(db: Path) -> None:
@@ -245,6 +265,6 @@ def test_receipts_onboarding_env_picks_the_file(db: Path, tmp_path: Path) -> Non
     onboard(db.parent, {"approval_threshold_cents": 500000})
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    other = onboard(elsewhere, {"approval_threshold_cents": 50000}, "answers.json")
+    other = onboard(elsewhere, {"approval_threshold_cents": 70000}, "answers.json")
     text = asked(run_hook(db, pay(80000), RECEIPTS_ONBOARDING=str(other)))
-    assert "Payments over $500.00 need the owner's approval (set in onboarding)." in text
+    assert "Payments over $700.00 need the owner's approval (set in onboarding)." in text

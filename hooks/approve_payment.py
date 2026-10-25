@@ -7,9 +7,9 @@ At or under the threshold it prints nothing, which leaves the decision to the no
 
 The threshold, in cents: env RECEIPTS_APPROVAL_CENTS when set (a non-number makes every payment
 ask); else payment_rules.approval_threshold_cents in the onboarding answers (env
-RECEIPTS_ONBOARDING, else $CLAUDE_PROJECT_DIR/receipts-onboarding.json); $1,000 when that file
-or key is missing. An onboarding file that can't be read or holds a bad value makes every
-payment ask. The reason says where the threshold came from.
+RECEIPTS_ONBOARDING, else $CLAUDE_PROJECT_DIR/receipts-onboarding.json); $500 when that file,
+its payment_rules or the threshold key is missing. An onboarding file that can't be read, isn't
+valid JSON, or holds a non-object or a bad value where those belong makes every payment ask. The reason says where the threshold came from.
 
 The details come from bakery.db, opened read-only: env BAKERY_DB, else
 $CLAUDE_PROJECT_DIR/bakery.db. If the bill can't be read, it still asks and says so; if earlier
@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-DEFAULT_THRESHOLD_CENTS = 100000
+DEFAULT_THRESHOLD_CENTS = 50000
 
 
 def dollars(cents: int) -> str:
@@ -64,7 +64,8 @@ def _show_bill_id(tool_input: dict[str, Any]) -> str:
 
 
 def onboarding_path() -> Path:
-    """Where the onboarding answers live; the same lookup as hooks/session_start.py."""
+    """Where the onboarding answers live: env RECEIPTS_ONBOARDING when set and non-empty, else
+    receipts-onboarding.json in CLAUDE_PROJECT_DIR (or "." when that is unset or empty)."""
     root = os.environ.get("CLAUDE_PROJECT_DIR") or "."
     return Path(os.environ.get("RECEIPTS_ONBOARDING") or Path(root) / "receipts-onboarding.json")
 
@@ -73,18 +74,22 @@ def _from_onboarding() -> tuple[int | None, str]:
     """The onboarding threshold and its source label; None plus why when it can't be trusted."""
     unreadable = "the onboarding answers couldn't be read ({}), so every payment needs approval."
     try:
-        text = onboarding_path().read_text(encoding="utf-8")
+        raw = onboarding_path().read_bytes()
     except FileNotFoundError:
         return DEFAULT_THRESHOLD_CENTS, "default"
-    except (OSError, ValueError):
+    except OSError:
         return None, unreadable.format("the file can't be opened")
     try:
-        answers = json.loads(text)
-    except (ValueError, RecursionError):
+        answers = json.loads(raw.decode("utf-8"))
+    except (ValueError, RecursionError):  # UnicodeDecodeError is a ValueError
         return None, unreadable.format("not valid JSON")
-    rules = answers.get("payment_rules") if isinstance(answers, dict) else None
-    if not isinstance(answers, dict) or not isinstance(rules, dict):
-        return None, unreadable.format("no payment_rules object")
+    if not isinstance(answers, dict):
+        return None, unreadable.format("not a JSON object")
+    if "payment_rules" not in answers:
+        return DEFAULT_THRESHOLD_CENTS, "default"
+    rules = answers["payment_rules"]
+    if not isinstance(rules, dict):
+        return None, unreadable.format("payment_rules isn't an object")
     value = rules.get("approval_threshold_cents")
     if value is None:
         return DEFAULT_THRESHOLD_CENTS, "default"

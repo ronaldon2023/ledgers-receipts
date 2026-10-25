@@ -203,10 +203,10 @@ def write(out: Path, feed: dict, receipts: dict) -> list[Path]:
     written = []
     for order_id, rc in receipts.items():
         p = out / f"receipt_live_{order_id}.json"
-        p.write_text(json.dumps(rc, indent=2) + "\n")
+        p.write_text(json.dumps(rc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         written.append(p)
     p = out / "feed_live.json"
-    p.write_text(json.dumps(feed, indent=2) + "\n")
+    p.write_text(json.dumps(feed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return [*written, p]
 
 

@@ -78,6 +78,9 @@ def test_no_raw_account_numbers_in_output(run: tuple[Path, Path], tmp_path: Path
     written = verify.write(tmp_path / "out", feed, receipts)
     text = "".join(p.read_text() for p in written)
     assert "9876543210" not in text and "000123454471" not in text
+    assert (
+        "\\u2022" not in text
+    )  # bullets written as characters, not \u escapes that read as digits
 
 
 def test_tampered_log_makes_receipts_untrusted(run: tuple[Path, Path]) -> None:

@@ -10,7 +10,40 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "hooks" / "onboarding_write.py"
 ANSWERS = "receipts-onboarding.json"
-VALID = json.dumps({"schema": "receipts-onboarding/0", "status": "stub"})
+QUESTION = "Bakery bill payments above what amount should wait for your yes?"
+RECOMMENDED = "$500 (Recommended)"
+SUPPLIER = {"name": "Flour Co", "email_domain": "flourco.example", "account_last4": "4471"}
+
+
+def answers(threshold: object = 50000, budget: object = 300000, last4: str = "4471") -> dict:
+    rules = {
+        "approval_threshold_cents": threshold,
+        "monthly_budget_cents": budget,
+        "approved_suppliers": [{**SUPPLIER, "account_last4": last4}],
+    }
+    return {"schema": "receipts-onboarding/0", "status": "stub", "payment_rules": rules}
+
+
+VALID = json.dumps(answers())
+
+
+def write_transcript(folder: Path, label: str, tool: str = "AskUserQuestion") -> str:
+    """A transcript where the owner answered the Approval card (or `tool` returned it)."""
+    ask = {
+        "type": "assistant",
+        "message": {"content": [{"type": "tool_use", "id": "toolu_1", "name": tool}]},
+    }
+    reply = {
+        "type": "user",
+        "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_1"}]},
+        "toolUseResult": {
+            "questions": [{"header": "Approval", "question": QUESTION}],
+            "answers": {QUESTION: label},
+        },
+    }
+    path = folder / "transcript.jsonl"
+    path.write_text("\n".join(json.dumps(e) for e in [ask, reply]) + "\n", encoding="utf-8")
+    return str(path)
 
 
 def run_raw(project: Path, stdin: str, **extra: str) -> str:
@@ -29,12 +62,26 @@ def run_raw(project: Path, stdin: str, **extra: str) -> str:
     return done.stdout
 
 
-def run_hook(project: Path, file_path: object, content: object = VALID, **extra: str) -> str:
+DEFAULT = object()
+
+
+def run_hook(
+    project: Path,
+    file_path: object,
+    content: object = VALID,
+    transcript: object = DEFAULT,
+    **extra: str,
+) -> str:
+    # By default the owner answered $500 in a transcript beside the project folder.
+    if transcript is DEFAULT:
+        transcript = write_transcript(project.parent, RECOMMENDED)
     event = {
         "hook_event_name": "PreToolUse",
         "tool_name": "Write",
         "tool_input": {"file_path": file_path, "content": content},
     }
+    if transcript is not None:
+        event["transcript_path"] = transcript
     return run_raw(project, json.dumps(event), **extra)
 
 
@@ -56,7 +103,7 @@ def test_onboarding_file_allowed(project: Path) -> None:
 
 
 def test_existing_onboarding_file_allowed(project: Path) -> None:
-    (project / ANSWERS).write_text("{}", encoding="utf-8")
+    (project / ANSWERS).write_text(VALID, encoding="utf-8")
     assert allowed(run_hook(project, str(project / ANSWERS)))
 
 

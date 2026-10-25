@@ -11,6 +11,10 @@ claims/last_raw.json
 .claude/settings.local.json
 .DS_Store
 
+# The owner's onboarding answers (business name, suppliers, account last 4), written by
+# the onboarding skill or the portal. Never committed.
+receipts-onboarding.json
+
 # Written by python -m receipts.verify
 fixtures/portal/feed_live.json
 fixtures/portal/receipt_live_*.json

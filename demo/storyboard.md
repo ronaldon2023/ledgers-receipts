@@ -41,8 +41,11 @@ Scenes 5 and 6 are the ones that must never fail.
 
 ## To settle
 
-- **Product name.** The pitch says "Receipts", the owner portal in #11 is branded "Ledger", and the marketplace is `the-ledgers`. Scene 9 ends on the project name, so pick one before the slides are made.
-- **Scene 3 in a live run.** PO-2041 is already seeded as placed, and BakeSupply returns `ord_1`. In a live run Claude would create a second order that the receipt never shows. The fix belongs to the `bakery/` owner, so scene 3 stays replay-only for now.
+- **Product name (proposed, needs the team's okay).** Use **Receipts, by The Ledgers**. "Receipts" is what the README, `docs/PLAN.md`, `CLAUDE.md`, the plugin and this storyboard already say, and "The Ledgers" is the team (and the marketplace, `the-ledgers`). The owner portal in #11 is branded "Ledger", so it would need to change to match. Scene 9 and the slides use the agreed name.
+- **Scene 3 in a live run.** PO-2041 is already seeded as placed, and BakeSupply returns `ord_1`. In a live run Claude would create a second order that the receipt never shows. The seed belongs to the `bakery/` owner, so scene 3 stays replay-only until they choose:
+  - **A.** Keep scene 3 replay-only and run the rest live. Nothing to change.
+  - **B.** In a live run, scene 3 shows the existing PO-2041 and its "order placed" stage instead of creating an order. The seed stays as it is.
+  - **C.** Change the seed so PO-2041 isn't pre-placed. Bill BILL-07 points at PO-2041, so the bill would need to arrive after the order, and that's a larger change.
 - **Owners.** Owen owns `demo/` for now. The slides and the backup video have no owner. Add a one-line `demo/` row to the ownership table in `CLAUDE.md`. That table is shared, so it needs the team's okay.
 - **One story.** `docs/PLAN.md` still describes chasing three invoices plus a bill. This storyboard follows the order receipt in `docs/mock/order_receipt.json`.
 - **PO numbers.** BakeSupply returns `ord_1` while the bakery calls the order PO-2041. An optional PO number on the order call would tie the two ids together on the receipt, but it doesn't fix the pre-seeded order above.

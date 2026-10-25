@@ -24,5 +24,5 @@ Everything for the three-minute pitch lives here: the storyboard, ideas, slides 
 
 - Who owns the slides and the backup video? Nobody yet.
 - Add a `demo/` row (owner: Owen) to the `CLAUDE.md` ownership table. That table is shared, so it needs the team's okay.
-- Which product name goes on the slides: Receipts, Ledger or The Ledgers?
+- Product name: proposed "Receipts, by The Ledgers". The owner portal (#11) still says "Ledger". Needs the team's okay.
 - Record scene 2 once #15 and #14 are merged. The install steps are in the README's "Install the plugin" section, and the onboarding questions are in #14. One manual pass is still needed, because the questions need an interactive session.

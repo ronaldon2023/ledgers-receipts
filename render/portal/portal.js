@@ -235,7 +235,7 @@ Portal.dashboard = function (d, ui) {
   var pct = Math.floor(g.budget.used_cents / g.budget.limit_cents * 100); // round down: 99.7% is not "100% used"
   var waiting = cards.filter(function (c) { return c.level === "approve"; });
   var h = Portal.header("Good afternoon, " + f.owner);
-  h += '<section aria-labelledby="glh"><h2 id="glh" style="margin:0;font-size:19px;font-weight:600">At a glance</h2><div class="glance">' +
+  h += '<section aria-label="At a glance"><div class="glance">' +
     '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + '</span></span>' +
     '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div>' +
     '<span class="d">' + pct + '% used</span></div>' +

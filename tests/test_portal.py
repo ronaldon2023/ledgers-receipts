@@ -372,7 +372,8 @@ def _with_status(status: str) -> dict:
 @needs_node
 def test_glance_comes_before_attention() -> None:
     html = page(data("pending"))
-    assert html.index("At a glance") < html.index("Needs your attention")
+    assert html.index('class="glance"') < html.index("Needs your attention")
+    assert ">At a glance<" not in html
 
 
 @needs_node

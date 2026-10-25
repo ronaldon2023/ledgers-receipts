@@ -1,6 +1,6 @@
 # Owner portal
 
-The website the bakery owner uses: **Dashboard** (at a glance, needs your attention),
+The website the bakery owner uses: **Dashboard** (summary tiles, needs your attention),
 **Activities** (everything Claude did, by time or by order) and **Policies**, plus one
 **Order receipt** page per order.
 Claude does the work; plain code decides every status. The portal only renders JSON.

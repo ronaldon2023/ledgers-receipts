@@ -296,33 +296,106 @@ Portal.policies = function (d) {
   });
   return h;
 };
+
+/* ---------- onboarding: sign in, connect Claude Code, set your rules ---------- */
+Portal.ONBOARD_STEPS = ["Sign in", "Connect Claude Code", "Your rules", "You're set"];
+// Install order from the plugin PR (#7): the small-business dependency's marketplace must come first.
+Portal.INSTALL = [
+  "/plugin marketplace add anthropics/knowledge-work-plugins",
+  "/plugin marketplace add ronaldon2023/ledgers-receipts",
+  "/plugin install ledgers-receipts@the-ledgers"
+];
+// Starting values for the rules step, read from the policies file.
+Portal.ruleDefaults = function (pol) {
+  var by = {};
+  ((pol || {}).policies || []).forEach(function (p) { by[p.id] = p; });
+  var limit = function (id, c) { return by[id] && by[id].limit_cents != null ? by[id].limit_cents : c; };
+  return {
+    suppliers: ((by["POL-ORDER-VENDOR"] || {}).setting || "").replace(/^Approved:\s*/, ""),
+    threshold_cents: limit("POL-PAY-THRESHOLD", 50000), budget_cents: limit("POL-BUDGET-MONTHLY", 300000),
+    floor_cents: limit("POL-BANK-FLOOR", 200000)
+  };
+};
+Portal.onboarding = function (d, ui) {
+  var esc = Portal.esc, o = ui.onboard || {}, step = o.step || 0, r = o.rules || Portal.ruleDefaults(d.policies);
+  var back = '<button type="button" class="btn ghost" data-onb="back">Back</button>';
+  var h = '<header class="top"><div><h1>Set up Ledger</h1><p>' + esc(d.feed.business) + ' · step ' + (step + 1) + ' of 4</p></div></header>' +
+    '<ol class="stages" aria-label="Setup steps">' + Portal.ONBOARD_STEPS.map(function (s, i) {
+      return '<li' + (i === step ? ' class="on" aria-current="step"' : '') + '><b>' + esc(s) + '</b><span class="tag ' + (i < step ? 'ic-ok">Done' : i === step ? 'ic-ask">Now' : 'ic-mute">Next') + '</span></li>';
+    }).join("") + '</ol><section class="card onb">';
+  if (step === 0) {
+    h += '<h2>Welcome, ' + esc(d.feed.owner) + '</h2><p>Ledger shows you everything Claude does for your business. Claude does the work, plain code checks every step, and nothing over your limits happens without you.</p>' +
+      '<div class="passkey"><strong>Sign in with your passkey</strong><span>Use Touch ID, Face ID or your security key. The same passkey approves payments later, so a stolen email or password can\'t move your money.</span>' +
+      '<div class="actions"><button type="button" class="btn primary" data-onb="signin">Use passkey</button></div></div>';
+  } else if (step === 1) {
+    var cmd = function (c, i) {
+      return '<div class="cmd"><code>' + esc(c) + '</code><button type="button" class="btn" data-copy="' + i + '">' + (o.copied === i ? 'Copied' : 'Copy') + '</button></div>';
+    };
+    h += '<h2>Connect Claude Code</h2><p>Claude works for you inside Claude Code. These steps let Ledger log and check everything it does.</p><ol class="howto">' +
+      '<li><b>Install Claude Code and sign in.</b> Follow the steps at <a href="https://claude.com/claude-code" target="_blank" rel="noopener">claude.com/claude-code</a>.</li>' +
+      '<li><b>Open your business folder and start Claude.</b> In a terminal, go to the folder that holds your business files, then run:' + cmd("claude", 0) + '</li>' +
+      '<li><b>Add the Ledger plugin.</b> Paste these into Claude, one at a time and in this order:' + Portal.INSTALL.map(function (c, i) { return cmd(c, i + 1); }).join("") + '</li>' +
+      '<li><b>Restart Claude.</b> It offers to set up your rules. Answer its questions; it confirms the same rules you\'ll see next.</li></ol>' +
+      '<div class="actions"><button type="button" class="btn primary" data-onb="connected">I\'ve connected Claude</button>' + back + '</div>';
+  } else if (step === 2) {
+    var num = function (id, label, cents, help) {
+      return '<label class="field"><span><b>' + esc(label) + '</b></span><span class="dollar">$<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + esc(Math.round(cents / 100)) + '"></span><span class="muted small">' + esc(help) + '</span></label>';
+    };
+    h += '<h2>Your rules</h2><p>Plain code checks these before every action Claude takes. Claude can\'t change them.</p>' +
+      '<h3>Order</h3><label class="field"><span><b>Approved suppliers</b></span><input id="r-suppliers" type="text" value="' + esc(r.suppliers) + '"><span class="muted small">Separate names with commas. Claude can only order from these.</span></label>' +
+      '<h3>Payment</h3>' + num("r-threshold", "Ask me before paying more than", r.threshold_cents, "Above this, Claude needs your passkey.") +
+      '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.budget_cents, "Orders that would go over it need your passkey.") +
+      num("r-floor", "Always keep in the bank", r.floor_cents, "Claude can't make a payment that drops your balance below this.") +
+      '<h3>Always on</h3><ul class="checks"><li><span class="ic-ok">✓</span><span><b>Email only addresses on file.</b> Blocks emails to anyone you haven\'t worked with.</span></li>' +
+      '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file.</b> Blocks payments to bank details sent by email.</span></li></ul>' +
+      '<p class="note">Preview: Claude saves your rules in your business folder when you confirm them in Claude Code. For this demo they\'re kept in this browser.</p>' +
+      '<div class="actions"><button type="button" class="btn primary" data-onb="rules">Save rules</button>' + back + '</div>';
+  } else {
+    h += '<h2>You\'re set</h2><div class="two">' +
+      '<div class="quote"><b>Claude does the work</b>Orders supplies, pays bills and answers email, using the order and payment skills.</div>' +
+      '<div class="quote"><b>Code checks every step</b>Approved suppliers: ' + esc(r.suppliers || "none yet") + '. Budget ' + esc(Portal.dollars(r.budget_cents)) + ' a month. Keep ' + esc(Portal.dollars(r.floor_cents)) + ' in the bank. Every step goes into a tamper-evident log.</div>' +
+      '<div class="quote"><b>You approve</b>Anything over ' + esc(Portal.dollars(r.threshold_cents)) + ', with your passkey, here in Ledger.</div>' +
+      '<div class="quote"><b>Alerts</b>We email you when something needs you. Email buttons only open Ledger; approving always needs your passkey here.</div></div>' +
+      '<div class="actions"><button type="button" class="btn primary" data-onb="finish">Go to dashboard</button>' + back + '</div>';
+  }
+  return h + '</section>';
+};
+
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
+  var brand = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>';
+  if (view === "onboarding") return { side: brand, main: Portal.onboarding(d, ui) };
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });
   var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d)
     : view === "activities" ? Portal.activities(d, ui) : Portal.dashboard(d, ui);
   if (broken) main = '<p class="banner" role="alert">Untrusted: the activity log failed its tamper check. Don\'t rely on anything here until it\'s fixed.</p>' + main;
   var cur = view === "policies" || view === "activities" ? view : "dashboard";
-  var side = '<div class="brand"><b>Ledger</b><span>' + esc(d.feed.business) + '</span></div>' +
+  var side = brand +
     [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
       return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
     }).join("") + '<div class="meta"><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
-    '<span>Signed in as ' + esc(d.feed.owner) + ' · passkey</span></div>';
+    '<span>Signed in as ' + esc(d.feed.owner) + ' · passkey</span><button type="button" data-onb="again">Run setup again</button></div>';
   return { side: side, main: main };
 };
 
 /* ---------- browser start-up: load the JSON, check it again every second, handle clicks ---------- */
 if (typeof document !== "undefined") (function () {
   var KEY = "receipts-portal-v3", STATES = ["pending", "stopped", "paid", "declined"];
-  var ui = { state: "pending", filter: "all", feedView: "time", confirming: null, dismissed: {} };
+  var ui = { state: "pending", filter: "all", feedView: "time", confirming: null, dismissed: {}, onboarded: false, onboard: { step: 0 } };
   var data = null, last = "", side = document.getElementById("side"), app = document.getElementById("app");
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "null");
     if (saved && STATES.indexOf(saved.state) >= 0) { ui.state = saved.state; ui.dismissed = saved.dismissed || {}; }
+    if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; }
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
-  if (asked && STATES.indexOf(asked[1]) >= 0) ui.state = asked[1];
-  function view() { var h = (location.hash || "").slice(1); return h === "policies" || h === "activities" || h.indexOf("order/") === 0 ? h : "dashboard"; }
+  if (asked && STATES.indexOf(asked[1]) >= 0) { ui.state = asked[1]; ui.onboarded = true; }
+  if (/[?&]onboarding=1/.test(location.search)) ui.onboarded = false; // ?onboarding=1 runs setup again
+  function view() {
+    var h = (location.hash || "").slice(1);
+    if (!ui.onboarded) return "onboarding";
+    return h === "policies" || h === "activities" || h.indexOf("order/") === 0 ? h : "dashboard";
+  }
   function render() {
     if (!data) return;
     ui.view = view();
@@ -332,7 +405,9 @@ if (typeof document !== "undefined") (function () {
   }
   function set(p) {
     for (var k in p) ui[k] = p[k];
-    try { localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed })); } catch (e) { /* ignore */ }
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, onboarded: ui.onboarded, rules: ui.onboard.rules }));
+    } catch (e) { /* ignore */ }
     render();
   }
   function get(name) {
@@ -355,7 +430,30 @@ if (typeof document !== "undefined") (function () {
     });
   }
   function go(state) { last = ""; set({ state: state, confirming: null }); load(); }
+  function onboardClick(t) {
+    var o = ui.onboard, step = o.step || 0, act = t.getAttribute("data-onb");
+    if (t.hasAttribute("data-copy")) {
+      var i = +t.getAttribute("data-copy"), text = i === 0 ? "claude" : Portal.INSTALL[i - 1];
+      if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () { /* copy blocked */ });
+      o.copied = i;
+      return set({});
+    }
+    if (act === "again") { ui.onboard = { step: 0, rules: o.rules }; return set({ onboarded: false }); }
+    if (act === "back") o.step = Math.max(0, step - 1);
+    else if (act === "rules") {
+      var dollars = function (id) { var v = Math.round(+document.getElementById(id).value); return (v > 0 ? v : 0) * 100; };
+      o.rules = { suppliers: document.getElementById("r-suppliers").value.trim(), threshold_cents: dollars("r-threshold"),
+        budget_cents: dollars("r-budget"), floor_cents: dollars("r-floor") };
+      o.step = 3;
+    } else if (act === "finish") { location.hash = "#dashboard"; return set({ onboarded: true }); }
+    else o.step = step + 1; // signin, connected
+    o.copied = null;
+    set({});
+    window.scrollTo(0, 0);
+  }
   document.addEventListener("click", function (e) {
+    var ob = e.target.closest("[data-onb],[data-copy]");
+    if (ob) return onboardClick(ob);
     var t = e.target.closest("[data-filter],[data-feedview],[data-action],[data-act]");
     if (!t) return;
     if (t.hasAttribute("data-filter")) return set({ filter: t.getAttribute("data-filter") });

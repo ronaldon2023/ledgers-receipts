@@ -252,3 +252,56 @@ def test_approval_cards_have_no_status_line() -> None:
     stopped = page(data("stopped"))
     assert '<span class="b b-stop">Stopped</span>' in stopped
     assert "<b>Ledger</b>" in html
+
+
+INSTALL_PR7 = [
+    "/plugin marketplace add anthropics/knowledge-work-plugins",
+    "/plugin marketplace add ronaldon2023/ledgers-receipts",
+    "/plugin install ledgers-receipts@the-ledgers",
+]
+
+
+def onboarding(step: int, rules: dict | None = None) -> dict:
+    out = run(
+        [
+            {
+                "data": data("pending"),
+                "ui": {"view": "onboarding", "onboard": {"step": step, "rules": rules}},
+            }
+        ]
+    )
+    return out[0]
+
+
+@needs_node
+def test_onboarding_steps_render_without_sidebar_links() -> None:
+    titles = ["Sign in with your passkey", "Connect Claude Code", "Your rules", "You're set"]
+    for step, title in enumerate(titles):
+        out = onboarding(step)
+        assert title.replace("'", "&#39;") in out["main"]
+        assert "<a " not in out["side"]
+        assert f"step {step + 1} of 4" in out["main"]
+
+
+@needs_node
+def test_onboarding_install_commands_match_plugin_pr() -> None:
+    html = onboarding(1)["main"]
+    positions = [html.index(f"<code>{c}</code>") for c in INSTALL_PR7]
+    assert positions == sorted(positions)
+    assert "<code>claude</code>" in html
+
+
+@needs_node
+def test_onboarding_rules_default_from_policies_and_escape_input() -> None:
+    html = onboarding(2)["main"]
+    assert 'value="Flour Co, BakeSupply"' in html
+    assert 'id="r-threshold" type="number" min="0" step="1" inputmode="numeric" value="500"' in html
+    rules = {
+        "suppliers": XSS,
+        "threshold_cents": 50000,
+        "budget_cents": 300000,
+        "floor_cents": 200000,
+    }
+    done = onboarding(3, rules)["main"] + onboarding(2, rules)["main"]
+    assert "<script" not in done
+    assert "Anything over $500" in done

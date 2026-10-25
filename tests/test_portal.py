@@ -146,6 +146,10 @@ def test_onboarding_symlink_cannot_lead_elsewhere(tmp_path: Path) -> None:
     (outside / "secret.txt").write_text("token=abc123")
     (business / "receipts-onboarding.json").symlink_to(outside / "secret.txt")
     assert resolve("/data/onboarding.json", business=business) is None
+    loop = tmp_path / "loop"
+    loop.mkdir()
+    (loop / "receipts-onboarding.json").symlink_to(loop / "receipts-onboarding.json")
+    assert resolve("/data/onboarding.json", business=loop) is None
 
 
 def test_server_answers_only_to_this_machines_names() -> None:
@@ -407,7 +411,12 @@ def test_no_budget_limit_from_onboarding_shows_as_no_limit() -> None:
     d["onboarding"] = {"payment_rules": {"monthly_budget_cents": None}}
     policies = page(d, "policies")
     assert "No limit" in policies and "$3,000 / month" not in policies
-    summary = run([{"data": d, "ui": {"view": "onboarding", "onboard": {"step": 3}}}])[0]["main"]
+    form = run([{"data": d, "ui": {"view": "onboarding", "onboard": {"step": 2}}}])[0]["main"]
+    assert re.search(r'id="r-budget"[^>]*value=""[^>]*placeholder="No limit"', form)
+    # What Save rules stores from an empty budget box; the summary must still say no limit.
+    saved = {"suppliers": "Flour Co", "threshold_cents": 50000, "floor_cents": 200000}
+    saved |= {"budget_cents": None, "no_budget": True}
+    summary = onboarding(3, saved)["main"]
     assert "No monthly budget limit" in summary and "$3,000 a month" not in summary
 
 

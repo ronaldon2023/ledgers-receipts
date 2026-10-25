@@ -389,13 +389,14 @@ Portal.onboarding = function (d, ui) {
       '<li><b>Restart Claude.</b> It offers to set up your rules. Answer its questions; it confirms the same rules you\'ll see next.</li></ol>' +
       '<div class="actions"><button type="button" class="btn primary" data-onb="connected">I\'ve connected Claude</button>' + back + '</div>';
   } else if (step === 2) {
-    var num = function (id, label, cents) {
-      return '<label class="field"><span><b>' + esc(label) + '</b></span><span class="dollar">$<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + esc(Math.round(cents / 100)) + '"></span></label>';
+    var num = function (id, label, cents, empty) { // empty: placeholder when there is no amount
+      return '<label class="field"><span><b>' + esc(label) + '</b></span><span class="dollar">$<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + (cents == null ? "" : esc(Math.round(cents / 100))) + '"' +
+        (empty ? ' placeholder="' + esc(empty) + '"' : "") + '></span></label>';
     };
     h += '<h2>Your rules</h2><p>Plain code checks these before every action Claude takes. Claude can\'t change them.</p>' +
       '<h3>Order</h3><label class="field"><span><b>Approved suppliers</b></span><input id="r-suppliers" type="text" value="' + esc(r.suppliers) + '"></label>' +
       '<h3>Payment</h3>' + num("r-threshold", "Ask me before paying more than", r.threshold_cents) +
-      '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.budget_cents) +
+      '<h3>Budget</h3>' + num("r-budget", "Monthly supplies budget", r.no_budget ? null : r.budget_cents, "No limit") +
       num("r-floor", "Always keep in the bank", r.floor_cents) +
       '<h3>Always on</h3><ul class="checks plain"><li><span class="ic-ok">✓</span><span><b>Email only addresses on file</b></span></li>' +
       '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file</b></span></li></ul>' +
@@ -499,8 +500,9 @@ if (typeof document !== "undefined") (function () {
     if (act === "back") o.step = Math.max(0, step - 1);
     else if (act === "rules") {
       var dollars = function (id) { var v = Math.round(+document.getElementById(id).value); return (v > 0 ? v : 0) * 100; };
+      var noBudget = document.getElementById("r-budget").value.trim() === ""; // empty box: no limit
       o.rules = { suppliers: document.getElementById("r-suppliers").value.trim(), threshold_cents: dollars("r-threshold"),
-        budget_cents: dollars("r-budget"), floor_cents: dollars("r-floor") };
+        budget_cents: noBudget ? null : dollars("r-budget"), no_budget: noBudget, floor_cents: dollars("r-floor") };
       o.step = 3;
     } else if (act === "finish") { location.hash = "#dashboard"; return set({ onboarded: true }); }
     else o.step = step + 1; // signin, connected

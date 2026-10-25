@@ -30,8 +30,11 @@ def resolve(
     """Map a URL path to a file the portal may serve, or None if it is off limits."""
     path = unquote(urlsplit(url_path).path)
     if path == ONBOARDING_URL:
-        folder = (business or Path.cwd()).resolve()
-        target = (folder / ONBOARDING).resolve()  # a symlink must not lead anywhere else
+        try:
+            folder = (business or Path.cwd()).resolve()
+            target = (folder / ONBOARDING).resolve()  # a symlink must not lead anywhere else
+        except (OSError, RuntimeError):  # a symlink loop raises RuntimeError before Python 3.13
+            return None
         return (
             target
             if target.parent == folder and target.name == ONBOARDING and target.is_file()
@@ -53,23 +56,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         target = resolve(path, business=self.business)
         return str(target) if target else str(HERE / "__not_found__")
 
-    def do_GET(self) -> None:
+    def answered(self) -> bool:
+        """Answer requests the file server shouldn't: other hosts, and no onboarding file yet."""
         if not host_allowed(self.headers.get("Host"), self.server.server_address[1]):
             self.send_error(403, "Open the portal at 127.0.0.1 or localhost")
-            return
+            return True
         if self.path.split("?")[0] == ONBOARDING_URL and not resolve(
             self.path, business=self.business
         ):
             self.send_response(204)  # not onboarded yet: empty, so the browser logs no error
             self.end_headers()
-            return
-        super().do_GET()
+            return True
+        return False
+
+    def do_GET(self) -> None:
+        if not self.answered():
+            super().do_GET()
 
     def do_HEAD(self) -> None:
-        if not host_allowed(self.headers.get("Host"), self.server.server_address[1]):
-            self.send_error(403)
-            return
-        super().do_HEAD()
+        if not self.answered():
+            super().do_HEAD()
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")

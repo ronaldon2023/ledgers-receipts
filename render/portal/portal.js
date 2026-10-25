@@ -179,7 +179,7 @@ Portal.groups = function (feed, byOrder) {
 };
 Portal.feedHtml = function (feed, ui) {
   var esc = Portal.esc, byOrd = ui.feedView === "order";
-  var h = '<section aria-labelledby="feedh"><div class="sh"><h2 id="feedh">AI agent activities</h2><div class="filters" role="group" aria-label="Filter">';
+  var h = '<section aria-label="AI agent activities"><div class="sh"><div class="filters" role="group" aria-label="Filter">';
   Portal.FILTERS.forEach(function (f) {
     h += '<button type="button" class="chip" data-filter="' + f[0] + '" aria-pressed="' + (ui.filter === f[0]) + '">' + esc(f[1]) + '</button>';
   });
@@ -228,8 +228,12 @@ Portal.dashboard = function (d, ui) {
     '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + waiting.length + '</span><span class="d">' +
     (waiting.length ? waiting.map(function (c) { return esc(c.short || c.title); }).join("<br>") : "No approvals waiting") + '</span></div>' +
     '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span>' +
-    '<span class="d">' + esc(g.run.blocked) + ' blocked by the guard · open any alert to see its steps</span></div></div></section>';
-  return h + Portal.feedHtml(f, ui);
+    '<span class="d">' + esc(g.run.blocked) + ' blocked by the guard · <a href="#activities">see all activities</a></span></div></div></section>';
+  return h;
+};
+Portal.activities = function (d, ui) {
+  return Portal.header("AI agent activities", "Everything Claude did and what code decided, newest first. Open a row to see its steps.") +
+    Portal.feedHtml(d.feed, ui);
 };
 Portal.itemsTable = function (items, total) {
   var esc = Portal.esc;
@@ -297,11 +301,12 @@ Portal.policies = function (d) {
 Portal.page = function (d, ui) {
   var esc = Portal.esc, view = ui.view || "dashboard";
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });
-  var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d) : Portal.dashboard(d, ui);
+  var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d)
+    : view === "activities" ? Portal.activities(d, ui) : Portal.dashboard(d, ui);
   if (broken) main = '<p class="banner" role="alert">Untrusted: the activity log failed its tamper check. Don\'t rely on anything here until it\'s fixed.</p>' + main;
-  var cur = view === "policies" ? "policies" : "dashboard";
+  var cur = view === "policies" || view === "activities" ? view : "dashboard";
   var side = '<div class="brand"><b>Receipts</b><span>' + esc(d.feed.business) + '</span></div>' +
-    [["dashboard", "Dashboard"], ["policies", "Policies"]].map(function (l) {
+    [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
       return '<a href="#' + l[0] + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + esc(l[1]) + '</a>';
     }).join("") + '<div class="meta"><span>Agent: Claude · connected</span><span>Log chain: <strong' + (broken ? ' class="bad">broken' : '>intact') + '</strong></span>' +
     '<span>Signed in as ' + esc(d.feed.owner) + ' · passkey</span></div>';
@@ -319,7 +324,7 @@ if (typeof document !== "undefined") (function () {
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
   if (asked && STATES.indexOf(asked[1]) >= 0) ui.state = asked[1];
-  function view() { var h = (location.hash || "").slice(1); return h === "policies" || h.indexOf("order/") === 0 ? h : "dashboard"; }
+  function view() { var h = (location.hash || "").slice(1); return h === "policies" || h === "activities" || h.indexOf("order/") === 0 ? h : "dashboard"; }
   function render() {
     if (!data) return;
     ui.view = view();

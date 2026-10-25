@@ -115,7 +115,7 @@ def test_every_state_and_view_renders() -> None:
     jobs = []
     for state in STATES:
         d = data(state)
-        for view in ["dashboard", "policies", "order/PO-2041", "order/BS-1"]:
+        for view in ["dashboard", "activities", "policies", "order/PO-2041", "order/BS-1"]:
             for feed_view in ["time", "order"]:
                 ui = {"view": view, "filter": "all", "feedView": feed_view}
                 jobs.append({"data": d, "ui": ui})
@@ -142,7 +142,7 @@ def test_unknown_status_renders_as_unknown() -> None:
     d["receipt"]["checks"][0]["status"] = "constructor"
     d["receipt"]["verdict"] = "SOMETHING_NEW"
     d["feed"]["events"][0]["level"] = "brand_new"
-    html = page(d, "order/PO-2041") + page(d)
+    html = page(d, "order/PO-2041") + page(d, "activities")
     assert html.count(">Unknown<") >= 3
 
 
@@ -156,7 +156,7 @@ def test_data_is_escaped() -> None:
     d["receipt"]["checks"][0]["title"] = XSS
     d["policies"]["policies"][0]["title"] = XSS
     stopped["actions"][1]["href"] = "javascript:alert(1)"
-    html = "".join(page(d, v) for v in ["dashboard", "order/PO-2041", "policies"])
+    html = "".join(page(d, v) for v in ["dashboard", "activities", "order/PO-2041", "policies"])
     assert "<script" not in html
     assert "javascript:" not in html
     assert "&lt;script&gt;" in html
@@ -165,7 +165,9 @@ def test_data_is_escaped() -> None:
 @needs_node
 def test_bank_numbers_show_last_four_only() -> None:
     for state in STATES:
-        html = "".join(page(data(state), v) for v in ["dashboard", "order/PO-2041", "policies"])
+        html = "".join(
+            page(data(state), v) for v in ["dashboard", "activities", "order/PO-2041", "policies"]
+        )
         assert not re.search(r"\d{5,}", html)
         assert not re.search(r"\*{4,}\d{4}", html)
         assert "••••4471" in html
@@ -173,7 +175,7 @@ def test_bank_numbers_show_last_four_only() -> None:
 
 @needs_node
 def test_by_order_groups_each_order() -> None:
-    html = page(data("stopped"), feedView="order")
+    html = page(data("stopped"), "activities", feedView="order")
     po, bs, other = (html.index(s) for s in ["Order PO-2041", "Order BS-1", "Not tied to an order"])
     assert po < bs < other
     for title in ["Bill BILL-07 from Flour Co arrived", "Payment of $800.00 to Flour Co stopped"]:
@@ -231,3 +233,11 @@ def test_dismissed_card_leaves_waiting_count() -> None:
     html = page(data("declined"), dismissed={"att_order": True})
     assert "Order 100 kg of sugar from BakeSupply" not in html
     assert 'Waiting on you</span><span class="n">0<' in html
+
+
+@needs_node
+def test_activities_have_their_own_page() -> None:
+    dash, acts = page(data("stopped")), page(data("stopped"), "activities")
+    assert 'class="feed"' not in dash and 'href="#activities"' in dash
+    assert 'class="feed"' in acts and "Needs your attention" not in acts
+    assert '<a href="#activities" aria-current="page">Activities</a>' in acts

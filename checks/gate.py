@@ -89,6 +89,9 @@ def c5_amounts_agree(p: Payment) -> CheckResult:
     return CheckResult("C5", "pass", f"Payment, bill and order all {_money(paying)}", ev, inputs)
 
 
+OPEN_ORDER_STATUSES = ("placed", "received")
+
+
 def c6_bill_has_order(p: Payment) -> CheckResult:
     inputs = {"bill.order_id": p.bill["order_id"], "bill.vendor_id": p.bill["vendor_id"]}
     ev = [f"bills:{p.bill['id']}"]
@@ -99,6 +102,11 @@ def c6_bill_has_order(p: Payment) -> CheckResult:
     ev.append(f"orders:{p.order['id']}")
     if p.order["vendor_id"] != p.bill["vendor_id"]:
         title = f"Bill {p.bill['id']} is from a different supplier than order {p.order['id']}"
+        return CheckResult("C6", "block", title, ev, inputs)
+    # Cancelling isn't supported yet (issue #22), so any status but these two blocks.
+    status = inputs["order.status"] = p.order["status"]
+    if status not in OPEN_ORDER_STATUSES:
+        title = f"Order {p.order['id']} is {status}, so its bill can't be paid"
         return CheckResult("C6", "block", title, ev, inputs)
     return CheckResult(
         "C6", "pass", f"Bill {p.bill['id']} is for order {p.order['id']}", ev, inputs

@@ -10,17 +10,20 @@ Write permission prompt, only when all of these hold:
   be a symlink, a hard link, or anything but a regular file if it already exists.
 - tool_input.content parses as a JSON object whose "schema" is "receipts-onboarding/0".
 - The payment rules don't get looser:
-  - File exists: the new payment_rules equals the old one, except that
-    approval_threshold_cents and monthly_budget_cents may each stay the same or go down
-    (null means no limit, so null -> number is a decrease and number -> null an increase).
-    An existing file that can't be read or isn't a JSON object allows nothing.
+  - File exists: every payment_rules key other than the two limits stays exactly the same,
+    and each limit stays the same or goes down. The approval amount is compared the way
+    approve_payment.py reads it: missing payment_rules, or a missing or null
+    approval_threshold_cents, means DEFAULT_THRESHOLD_CENTS ($500), so null -> $10,000 is a
+    raise. For monthly_budget_cents, missing or null means no limit, so a number -> null is a
+    raise. An existing file that can't be read, isn't a JSON object, or holds a limit that
+    isn't a whole number of cents allows nothing.
   - No file yet: payment_rules.approval_threshold_cents equals the owner's latest answer to
-    the AskUserQuestion card with header "Approval", read from the session transcript
-    (transcript_path on stdin). Only a user entry whose tool_result blocks all answer an
-    earlier AskUserQuestion tool_use counts, so text in another tool's output (an email,
-    say) can't pose as the owner's answer. "$500 (Recommended)" is 50000; a typed "Other"
-    amount such as "$750" or "750" is 75000. The budget and supplier list aren't checked
-    on a first save.
+    the AskUserQuestion question with header "Approval" and the exact text of QUESTION, read
+    from the session transcript (transcript_path on stdin). Only a user entry whose
+    tool_result blocks all answer an earlier AskUserQuestion tool_use counts, so text in
+    another tool's output (an email, say) can't pose as the owner's answer.
+    "$500 (Recommended)" is 50000; a typed "Other" amount such as "$750" or "750" is 75000.
+    The budget and supplier list aren't checked on a first save.
 
 Anything else, including stdin that isn't JSON or an error in this hook, prints nothing
 and exits 0, so the normal Write prompt shows. Claude Code still applies the user's deny and
@@ -41,12 +44,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from session_start import onboarding_path
-
 SCHEMA = "receipts-onboarding/0"
 APPROVAL_HEADER = "Approval"
-LIMITS = ("approval_threshold_cents", "monthly_budget_cents")
+# The Round 1 Approval question in skills/onboarding/SKILL.md, word for word.
+QUESTION = "Bakery bill payments above what amount should wait for your yes?"
+# Must equal approve_payment.DEFAULT_THRESHOLD_CENTS; a test checks they match.
+DEFAULT_THRESHOLD_CENTS = 50000
+THRESHOLD, BUDGET = "approval_threshold_cents", "monthly_budget_cents"
 AMOUNT = re.compile(r"\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?")
 
 
@@ -81,29 +85,37 @@ def parse_answers(content: Any) -> dict | None:
     return answers
 
 
-def is_limit(value: Any) -> bool:
-    return value is None or (isinstance(value, int) and not isinstance(value, bool))
+def is_cents(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def not_looser(old: Any, new: Any) -> bool:
-    """True when new payment_rules equals old, with each limit the same or lower."""
-    if not isinstance(old, dict) or not isinstance(new, dict):
-        return old == new
-    if old.keys() != new.keys():
+def effective_rules(answers: dict) -> tuple[dict, int, int | None] | None:
+    """(other payment_rules keys, effective threshold, budget or None for no limit).
+
+    None when the rules can't be compared: payment_rules isn't an object, or a limit isn't
+    null or a whole number of cents.
+    """
+    rules = answers.get("payment_rules", {})
+    if not isinstance(rules, dict):
+        return None
+    threshold, budget = rules.get(THRESHOLD), rules.get(BUDGET)
+    if threshold is None:
+        threshold = DEFAULT_THRESHOLD_CENTS  # what approve_payment.py uses for null or missing
+    if not is_cents(threshold) or not (budget is None or is_cents(budget)):
+        return None
+    others = {k: v for k, v in rules.items() if k not in (THRESHOLD, BUDGET)}
+    return others, threshold, budget
+
+
+def not_looser(old: dict, new: dict) -> bool:
+    """True when the other payment rules are unchanged and neither limit goes up."""
+    before, after = effective_rules(old), effective_rules(new)
+    if before is None or after is None:
         return False
-    for key in old:
-        if key not in LIMITS:
-            if old[key] != new[key]:
-                return False
-            continue
-        before, after = old[key], new[key]
-        if not is_limit(before) or not is_limit(after):
-            return False
-        if after is None and before is not None:
-            return False
-        if after is not None and before is not None and after > before:
-            return False
-    return True
+    if before[0] != after[0] or after[1] > before[1]:
+        return False
+    old_budget, new_budget = before[2], after[2]
+    return old_budget is None or (new_budget is not None and new_budget <= old_budget)
 
 
 def amount_cents(label: Any) -> int | None:
@@ -155,8 +167,10 @@ def approval_answer(transcript_path: Any) -> int | None:
         if not isinstance(answers, dict) or not isinstance(questions, list):
             continue
         for q in questions:
-            if isinstance(q, dict) and q.get("header") == APPROVAL_HEADER:
-                found = amount_cents(answers.get(str(q.get("question", ""))))
+            if not isinstance(q, dict) or q.get("header") != APPROVAL_HEADER:
+                continue
+            if q.get("question") == QUESTION:
+                found = amount_cents(answers.get(QUESTION))
     return found
 
 
@@ -164,8 +178,8 @@ def first_save_ok(new: dict, transcript_path: Any) -> bool:
     rules = new.get("payment_rules")
     if not isinstance(rules, dict):
         return False
-    threshold = rules.get("approval_threshold_cents")
-    if not is_limit(threshold) or threshold is None:
+    threshold = rules.get(THRESHOLD)
+    if not is_cents(threshold):
         return False
     return threshold == approval_answer(transcript_path)
 
@@ -177,7 +191,7 @@ def update_ok(file_path: str, new: dict) -> bool:
         return False
     if not isinstance(old, dict):
         return False
-    return not_looser(old.get("payment_rules"), new.get("payment_rules"))
+    return not_looser(old, new)
 
 
 def decision(event: Any) -> dict | None:
@@ -186,6 +200,10 @@ def decision(event: Any) -> dict | None:
     tool_input = event.get("tool_input")
     if not isinstance(tool_input, dict):
         return None
+    # Imported here, so a missing session_start.py lands in main()'s guard and prints nothing.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from session_start import onboarding_path
+
     file_path = tool_input.get("file_path")
     if not is_onboarding_file(file_path, onboarding_path()):
         return None

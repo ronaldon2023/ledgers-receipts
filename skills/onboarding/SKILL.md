@@ -25,7 +25,8 @@ Ask the remaining questions in a single AskUserQuestion call. List the tool opti
 alphabetically; the owner can pick "Other" to name a different tool or type their own amount.
 Set `multiSelect: true` on Payments, since a business can use more than one; the others are
 single choice. Approval lists its options in the order shown, with $500 first as the
-recommendation.
+recommendation. Use the Approval header and question word for word: Receipts reads the owner's
+answer by them when it saves the file.
 
 | Header | Question | Options |
 |---|---|---|
@@ -64,7 +65,9 @@ only the last 4 digits, tell them you did, and say the full number stays in this
 ## Save the answers
 
 Save right away; don't show the file or ask for a yes first. The owner doesn't need to see
-it. Write the whole
+it. If the save raises a payment limit (a higher approval amount, a removed budget, a changed
+supplier), or Claude Code shows a permission prompt for it anyway, tell the owner in one
+sentence: "Raising a payment limit needs your yes, so please approve this save." Write the whole
 `receipts-onboarding.json` in the project folder with the Write tool, also when changing an
 existing file, in this shape (money in integer cents, unknown values as `null`):
 

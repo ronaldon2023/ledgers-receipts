@@ -1,6 +1,8 @@
+import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "hooks" / "onboarding_write.py"
 ANSWERS = "receipts-onboarding.json"
 QUESTION = "Bakery bill payments above what amount should wait for your yes?"
+THRESHOLD = "approval_threshold_cents"
 RECOMMENDED = "$500 (Recommended)"
 SUPPLIER = {"name": "Flour Co", "email_domain": "flourco.example", "account_last4": "4471"}
 
@@ -27,7 +30,9 @@ def answers(threshold: object = 50000, budget: object = 300000, last4: str = "44
 VALID = json.dumps(answers())
 
 
-def write_transcript(folder: Path, label: str, tool: str = "AskUserQuestion") -> str:
+def write_transcript(
+    folder: Path, label: str, tool: str = "AskUserQuestion", question: str = QUESTION
+) -> str:
     """A transcript where the owner answered the Approval card (or `tool` returned it)."""
     ask = {
         "type": "assistant",
@@ -37,8 +42,8 @@ def write_transcript(folder: Path, label: str, tool: str = "AskUserQuestion") ->
         "type": "user",
         "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_1"}]},
         "toolUseResult": {
-            "questions": [{"header": "Approval", "question": QUESTION}],
-            "answers": {QUESTION: label},
+            "questions": [{"header": "Approval", "question": question}],
+            "answers": {question: label},
         },
     }
     path = folder / "transcript.jsonl"
@@ -314,3 +319,72 @@ def test_update_other_answers_may_change(project: Path) -> None:
 def test_update_existing_corrupt(project: Path, old: str) -> None:
     (project / ANSWERS).write_bytes(old.encode("latin-1"))
     assert run_hook(project, str(project / ANSWERS)) == ""
+
+
+# A null or missing approval amount means approve_payment.py's $500 default, not "no limit".
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "allow"),
+    [
+        (None, 10000000, False),
+        (None, 50000, True),
+        (None, 25000, True),
+        (25000, None, False),
+        (100000, None, True),
+    ],
+)
+def test_update_null_threshold_is_default(
+    project: Path, before: object, after: object, allow: bool
+) -> None:
+    out = update(project, answers(threshold=before), answers(threshold=after))
+    assert allowed(out) if allow else out == ""
+
+
+def test_update_missing_rules_is_default(project: Path) -> None:
+    old = {"schema": "receipts-onboarding/0"}
+    assert update(project, old, {**old, "payment_rules": {THRESHOLD: 10000000}}) == ""
+    assert allowed(update(project, old, {**old, "payment_rules": {THRESHOLD: 50000}}))
+
+
+def test_update_negative_threshold_silent(project: Path) -> None:
+    assert update(project, answers(), answers(threshold=-1)) == ""
+
+
+def test_default_matches_approve_payment() -> None:
+    modules = {}
+    for name in ("onboarding_write", "approve_payment"):
+        spec = importlib.util.spec_from_file_location(name, ROOT / "hooks" / f"{name}.py")
+        modules[name] = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modules[name])
+    want = modules["approve_payment"].DEFAULT_THRESHOLD_CENTS
+    assert modules["onboarding_write"].DEFAULT_THRESHOLD_CENTS == want
+
+
+def test_question_matches_skill() -> None:
+    skill = (ROOT / "skills" / "onboarding" / "SKILL.md").read_text(encoding="utf-8")
+    assert f"| Approval | {QUESTION} |" in skill
+    assert f'QUESTION = "{QUESTION}"' in HOOK.read_text(encoding="utf-8")
+
+
+def test_create_other_question_with_approval_header_silent(project: Path) -> None:
+    transcript = write_transcript(
+        project.parent, "$9,999", question="Which invoice should I pay first?"
+    )
+    content = json.dumps(answers(threshold=999900))
+    assert run_hook(project, str(project / ANSWERS), content, transcript) == ""
+
+
+def test_missing_session_start_silent(project: Path, tmp_path: Path) -> None:
+    alone = tmp_path / "alone"
+    alone.mkdir()
+    shutil.copy(HOOK, alone / HOOK.name)
+    event = {"tool_name": "Write", "tool_input": {"file_path": str(project / ANSWERS)}}
+    done = subprocess.run(
+        [sys.executable, str(alone / HOOK.name)],
+        input=json.dumps(event),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert done.stdout == ""

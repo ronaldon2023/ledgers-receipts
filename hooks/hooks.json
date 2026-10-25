@@ -1,5 +1,5 @@
 {
-  "description": "Receipts plugin hooks. SessionStart starts onboarding; PreToolUse asks the owner before a large payment and lets Claude save receipts-onboarding.json without a permission prompt. The receipt and Stop hooks land in later PRs.",
+  "description": "Receipts plugin hooks. SessionStart starts onboarding; PreToolUse asks the owner before a large payment and lets Claude save receipts-onboarding.json without a permission prompt only when the save doesn't loosen the payment rules. The receipt and Stop hooks land in later PRs.",
   "hooks": {
     "SessionStart": [
       {

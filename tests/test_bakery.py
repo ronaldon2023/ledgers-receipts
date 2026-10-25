@@ -128,6 +128,8 @@ def test_create_order_writes_order_and_items(db: Path) -> None:
         ("placed", 20000)
     ]
     assert rows(db, "SELECT quantity FROM order_items WHERE order_id = 'PO-2042'") == [(5,)]
+    (order_date,) = rows(db, "SELECT order_date FROM orders WHERE id = 'PO-2042'")[0]
+    assert "T" in order_date and order_date[-6] in "+-"  # full timestamp with UTC offset
 
 
 @pytest.mark.parametrize(

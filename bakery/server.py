@@ -27,7 +27,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def _next_id(conn: sqlite3.Connection, prefix: str) -> str:
@@ -137,7 +137,7 @@ def create_order(vendor_id: str, items: list[dict]) -> dict:
         total = sum(i["quantity"] * i["unit_price_cents"] for i in items)
         conn.execute(
             "INSERT INTO orders VALUES (?, ?, ?, 'placed', ?)",
-            (order_id, vendor_id, _now()[:10], total),
+            (order_id, vendor_id, _now(), total),
         )
         conn.executemany(
             "INSERT INTO order_items VALUES (?, ?, ?, ?, ?)",

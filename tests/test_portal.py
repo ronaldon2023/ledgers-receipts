@@ -371,3 +371,11 @@ def _with_status(status: str) -> dict:
 def test_glance_comes_before_attention() -> None:
     html = page(data("pending"))
     assert html.index("At a glance") < html.index("Needs your attention")
+
+
+@needs_node
+def test_glance_tiles_drop_budget_left_and_balance_note() -> None:
+    html = page(data("pending"))
+    assert "98% used</span>" in html
+    assert " left</span>" not in html
+    assert "Floor $2,000" not in html and "if BILL-07 is paid" not in html

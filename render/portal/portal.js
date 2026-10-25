@@ -221,9 +221,8 @@ Portal.dashboard = function (d, ui) {
   h += '<section aria-labelledby="glh"><h2 id="glh" style="margin:0;font-size:19px;font-weight:600">At a glance</h2><div class="glance">' +
     '<div class="tile"><span class="k">' + esc(g.budget.label) + '</span><span class="n">' + esc(Portal.dollars(g.budget.used_cents)) + ' <span>of ' + esc(Portal.dollars(g.budget.limit_cents)) + '</span></span>' +
     '<div class="meter" role="img" aria-label="' + pct + ' percent used"><i style="width:' + Math.min(pct, 100) + '%"></i></div>' +
-    '<span class="d">' + pct + '% used · ' + esc(Portal.dollars(g.budget.limit_cents - g.budget.used_cents)) + ' left</span></div>' +
-    '<div class="tile"><span class="k">Operating balance</span><span class="n">' + esc(Portal.dollars(g.balance.balance_cents)) + '</span>' +
-    '<span class="d">Floor ' + esc(Portal.dollars(g.balance.floor_cents)) + ' · ' + esc(g.balance.note) + '</span></div>' +
+    '<span class="d">' + pct + '% used</span></div>' +
+    '<div class="tile"><span class="k">Operating balance</span><span class="n">' + esc(Portal.dollars(g.balance.balance_cents)) + '</span></div>' +
     '<div class="tile"><span class="k">Waiting on you</span><span class="n">' + waiting.length + '</span><span class="d">' +
     (waiting.length ? waiting.map(function (c) { return esc(c.short || c.title); }).join("<br>") : "No approvals waiting") + '</span></div>' +
     '<div class="tile"><span class="k">Claude\'s run today</span><span class="n">' + esc(g.run.steps) + ' <span>steps</span></span>' +

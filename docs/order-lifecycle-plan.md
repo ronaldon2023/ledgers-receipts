@@ -1,7 +1,7 @@
 # Plan: checks, guards, verify, skills and hooks (Anthony's lane)
 
 Revision 3, 2026-10-25 ~14:35 PT: brought in line with PRs #2, #4, #10 and #13 as merged (§0) and the decisions made
-since revision 2. Written for Anthony and for the agent session working in the team repo (this repo). Read it cold:
+since revision 2. Revision 3.1, 14:42: §8 Q-supplier-tools and Q-policy-seed settled by Anthony. Written for Anthony and for the agent session working in the team repo (this repo). Read it cold:
 paths are repo-relative. The open questions left are in §8. Their defaults are labeled. **Where §0 and a later
 section disagree, §0 wins.**
 
@@ -34,14 +34,18 @@ Findings on the merged work. Each one names the check that would catch it:
   but no server has that tool. The fix waits on Q-supplier-tools. Check: grep the schema for a tool name that
   isn't in `bakesupply/server.py` (main) or `bakery/server.py` (`local-server`).
 - **F2:** `policy.sha256` is required and described as "Hash of the policy.json that ran", but there is no
-  `policy.json`. **Default for stage 1:** the sha256 of the `policies` rows as seeded (sorted by id, as JSON), or of
-  `{}` if Q-policy-seed drops them, labeled that way in the receipt. Check: the schema test runs on a stage-1 receipt.
+  `policy.json`. **Default for stage 1:** the sha256 of the `policies` rows as seeded (sorted by id, as JSON),
+  labeled that way in the receipt. Check: the schema test runs on a stage-1 receipt.
 - **F3:** sample checks `chk_1` (approved supplier), `chk_2` (budget, "$2,940 of $3,000") and `chk_6` (bank floor)
   are `kind: "policy"`, and `test_matches_seed` doesn't compare them with the `policies` rows. Check: extend
   `test_matches_seed` to every `kind: "policy"` check.
 - **F4:** the sample's PO-2041 has two lines, all-purpose and bread flour. `place_order` takes one SKU per call
   and returns `ord_N` ids that nothing links to `PO-2041`. Check: a test that places PO-2041's lines through
   BakeSupply and joins the results to `orders`.
+
+Merged since this section was read (14:33–14:59, not reviewed here): PRs #12 (payment checks), #7 (plugin skeleton),
+#15 (approval hook), the `local-server` merge (both servers registered), #24 (onboarding), #18 (DB checks), and
+347248d (C4–C8 inside `pay_bill`). Next revision of §0 reads them.
 
 ## 1 · What this builds
 
@@ -91,16 +95,16 @@ branch `docs/whiteboard`). The original phone photos show the door code and Wi-F
 |---|---|---|---|
 | D1 | Checks run inside the MCP server's write tools, which import our library. A block returns `{"ok": false, "blocked": [...]}` and writes nothing. If the checks crash, the tool refuses: fail closed in code we control | Anthony, 13:00 | A PreToolUse command hook as the only gate: it duplicates DB access outside the server |
 | D2 | **The owner approves every `pay_bill` (stage 1).** A thin PreToolUse hook matching `mcp__bakery-local__pay_bill` returns `permissionDecision: "ask"` on every call, with no threshold until #9. This is the SMB plugin's own rule ("Do not auto-pay anything, ever"). The hook forces the prompt even in auto mode, and the agent can't answer it (hooks.md:1960, 1971). Bypass-permissions mode skips it, so the install page says not to use that mode, and SessionStart warns when it's on | Anthony, 14:30 | Passkey or hash auth: Future. A threshold: deferred to #9 |
-| D3 | One receipt per order, in one JSON file (PR #2's schema). It's created the moment the order is submitted and updated at each step after that (approval, payment, read-back), then finalized at Stop with claims and verdict. **Which call creates it is open** (§0 F1, §8 Q-supplier-tools). Stage 1 creates it on the first `pay_bill` (§6a) | Anthony, 13:25 | A receipt only at the end, which loses the board's "generated at order start" |
+| D3 | One receipt per order, in one JSON file (PR #2's schema). It's created the moment the order is submitted and updated at each step after that (approval, payment, read-back), then finalized at Stop with claims and verdict. **Which call creates it outside stage 1 is open** (§0 F1, F4; task 5). Stage 1 creates it on the first `pay_bill` (§6a) | Anthony, 13:25 | A receipt only at the end, which loses the board's "generated at order start" |
 | D4 | **Policies and thresholds are deferred to issue #9** (Anthony, 14:25). The seed has a `policies` table again (7bf070f, 14:23), but stage 1 runs no policy checks (§8 Q-policy-seed), and C1 is the approval in D2. The SMB plugin v1.35.1 has no policy skill and no thresholds, only prose approval gates (`pay-the-bills/SKILL.md:29, :56, :80`; `ap-processor/SKILL.md:70, :78, :128`). Issue #9 starts from that | Anthony, 14:25 | `policy.json` from onboarding (revision 2), superseded |
 | D5 | Claim extraction is core. The final message goes in, claims come out, and verify compares them with the DB | Anthony, 13:00 | — |
 | D6 | Build against fixtures until the DB and MCP land. Checks read records through one `Source` interface: `FixtureSource` now, `SqliteSource(conn)` when Ronaldo's schema lands, using the server's own connection | default | Waiting on the DB |
 | D7 | Payment-ready trigger in the demo: the owner asks. SessionStart also lists invoices due within N days | default | cron or launchd: Future |
 | D8 | Our plugin depends on and wraps the Claude for Small Business plugin (`small-business@knowledge-work-plugins`, v1.35.1 at 33d3dea). We use its skills: `smb-onboard`, `ap-processor` and `pay-the-bills` (which never sends money) and `inventory-planner`. We add the execution through MCP, the checks and the receipt. Install: `"dependencies": [{"name": "small-business", "marketplace": "knowledge-work-plugins"}]` in our `plugin.json`, plus `"allowCrossMarketplaceDependenciesOn": ["knowledge-work-plugins"]` in our `marketplace.json`. Installing ours installs theirs only when the user has already added the `anthropics/knowledge-work-plugins` marketplace; otherwise the dependency is skipped (plugin-dependencies.md:58, 89, 110; tested by the plugin session). **The install is three steps:** add the knowledge-work-plugins marketplace, add ours, install `ledgers-receipts`. There's no version range, because a range resolves against git tags (`small-business--v<ver>`) that their repo may not have (:51, 143). A plugin's `settings.json` honours only `agent` and `subagentStatusLine`, so deny rules ship on the install page as project settings, not in the plugin | Anthony, 13:25 (goal); tested 14:20 | Manual install instructions only: one more step for a non-developer owner |
 
-**Conflict to settle (D1):** `docs/PLAN.md` says "The server never checks policy. Blocking is the guard's job" and gives
-Ronaldo a PreToolUse `guard.py`. D1 moves policy checks into the MCP write tools instead. Anthony and Ronaldo decide;
-either way the check logic is the shared `checks/` library, so only the call site changes.
+**D1 as built (main at 347248d, 14:59):** `pay_bill` calls `checks/gate.py`'s `evaluate()`, which runs C4–C8, and on a
+block it refuses and saves nothing. That is D1's call site. Whether `docs/PLAN.md`'s guard hook stays alongside it is
+Ronaldo's call.
 
 ## 3 · Dependencies and interfaces
 
@@ -169,7 +173,7 @@ Every task follows the same flow: a branch, a PR, a reviewer subagent, then a pe
 | 2 | Checks library `checks/`: `Source`, `FixtureSource`, checks C1–C10 (§5), `evaluate`, `load_policy`. A corrupt or missing policy gives `block` | executor (opus) | §5 table tests pass in `make test`; nothing imports `anthropic` or networking | 1 |
 | 3 | MCP hand-off: an example call site, plus `tests/test_server_checks.py` that Luke and Owen run against their tools. A blocked call writes no row; a crashing check refuses | executor (opus), with Luke + Owen | Their server passes the tests on a fixture DB | 2, MCP tool names |
 | 4 | Approval hook: PreToolUse on the pay tool. Returns `ask` on every `pay_bill` (D2) and has `onFailure: "block"` (needs Claude Code v2.1.295 or later) | executor (opus) | Pipe tests: every `pay_bill` call gives `ask`; other tools get no decision; a hook crash blocks (`onFailure`) | 2 |
-| 5 | Receipt and log hooks: PostToolUse on the first `pay_bill` for an order opens `receipts/<order_id>.json` (on the order call instead once Q-supplier-tools settles); later calls update it. The log is main's `receipts/hook_log.py`, already wired to every call in `.claude/settings.json`; task 5 reads it and adds no second log entry. Writes are atomic (temp file + rename) under a file lock | executor (opus) | Replaying a fixture event stream gives the sample receipt; two parallel calls lose no update; the chain verifies | 1, 2 |
+| 5 | Receipt and log hooks: PostToolUse on the first `pay_bill` for an order opens `receipts/<order_id>.json` (on `place_order` once F4 settles how an order maps to its calls); later calls update it. The log is main's `receipts/hook_log.py`, already wired to every call in `.claude/settings.json`; task 5 reads it and adds no second log entry. Writes are atomic (temp file + rename) under a file lock | executor (opus) | Replaying a fixture event stream gives the sample receipt; two parallel calls lose no update; the chain verifies | 1, 2 |
 | 6 | Claims: port `extraction/` to contract 3 (the actions now include `place_order` and `pay_bill`; amounts in integer cents; `target` is the name as the summary says it). Use `messages.parse` on Haiku 5.5 with no `temperature`. This deliberately differs from PLAN.md's temperature 0, because Haiku 5.5 returns 400 on a non-default temperature (claude-api model-migration.md:2295). Drop any claim whose quote isn't in the summary | executor (opus) | Unit tests offline; golden set (live, `RUN_LIVE=1`, with Anthony's go on spend) at 9/10, stable across 3 runs | 1 |
 | 7 | Verify: `verify.py`. Step 0: chain intact. Step 1: log against DB (`phantom`). Step 2: expected order against actual (`not_done`). Step 3: claims against DB (`false_claim`, `silent_action`). Step 4: rerun the pre-payment checks as of just before the payment (§6a) and compare with the recorded results. Then the verdict. The Stop hook runs extract and verify, then finalizes the receipt; `make receipt` reruns them when Stop didn't fire | executor (opus) | One fixture set per status gives that status; the tampered-log fixture gives `UNTRUSTED` | 5, 6 |
 | 8 | Onboarding: SessionStart hook (no `policy.json` → tell Claude to run the onboarding skill; otherwise a short policy summary plus invoices due soon). Onboarding skill: Q&A for threshold, monthly budget, bank floor, approved suppliers (bank account, email domain), tools, external systems; writes `policy.json`. It runs after the SMB plugin's `smb-onboard` and skips what that already asked (Q-smb-onboard) | executor (opus) | In a fresh `CLAUDE_CONFIG_DIR` with the plugin installed, onboarding starts unprompted and writes a policy that validates | 0, 1 |
@@ -257,8 +261,8 @@ wait on Q-supplier-tools.
 
 1. The owner asks Claude to pay Flour Co's bill. Claude reads it with `list_bills` and calls
    `mcp__bakery-local__pay_bill("BILL-07", 80000, to_account)`.
-2. The approval hook returns `ask`, and the owner approves or declines (C1). The pre-payment checks C4, C5, C7 and C8
-   run against `bakery.db`, and a failure refuses the payment. Where they're called from is D1, still open.
+2. The approval hook returns `ask`, and the owner approves or declines (C1). The pre-payment checks C4–C8
+   run against `bakery.db` inside `pay_bill` (D1, 347248d), and a failure refuses the payment.
 3. The PostToolUse hook on `pay_bill` creates the receipt for PO-2041 if none exists, then records the payment and each
    check's result. C10 confirms the payment row exists.
 4. At Stop, claims are extracted, verify runs `checks/payment.py` and the reconciliation checks, and the receipt gets
@@ -282,7 +286,7 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
   `s1:log:7`, `inbox:5` or `summary`), plus optional `guard`, `inputs`, `caused_by` and `quote`. `inputs` holds the masked values the check
   compared, e.g. `{"pay_to": "******3210", "on_file": "********4471"}`.
 - **`checks_version`:** the git commit of the checks library that ran.
-- **`policy.sha256`:** the hash of the policy that ran. Until #9 lands, that's the F2 default: the hash of the seeded `policies` rows, or of `{}` if Q-policy-seed drops them.
+- **`policy.sha256`:** the hash of the policy that ran. Until #9 lands, that's the F2 default: the hash of the seeded `policies` rows.
 - **Verify reruns the checks at finalize.** It recomputes each pre-payment check from the DB as it stood just before the
   payment under test (that payment's own row and later writes excluded, or C7 would always fail), with the same version and policy. A stored result that differs from the rerun is a finding of its own, and the verdict can't be `VERIFIED`.
 - **The website renders `title`, `evidence` and `inputs` as given** and evaluates nothing.
@@ -312,24 +316,53 @@ spoofed sender (C8 blocks). For this slice the receipt fills `order`, `bill`, `p
 - **Q-proxy:** does Luke and Owen's proxy log or block calls too? If it logs, task 5's log may duplicate it.
 - **Q-db-write:** who saves the final receipt into the DB ("Outcome receipt → DB")? Default: an MCP tool
   `save_receipt(json)` that Luke and Owen add, called by the Stop hook.
-- **Q-supplier-tools (reopened 14:25):** Anthony wants the order call to return the confirmation and the supplier's
-  invoice (13:25). As built, `place_order` returns no invoice and `create_order` was dropped (§0). Two options:
-  - **A:** BakeSupply's `place_order` also returns an invoice (amount, due date, sender email, account), and a
-    `bakery-local` tool saves it as the `bills` row. The invoice still comes from the supplier, which is what gives
-    C5 and C8 meaning. Owen and Luke would build it.
-  - **B:** a `bakery-local` `create_order(vendor_id, items)` calls BakeSupply and writes `orders` and `bills` itself.
-    This splits the supplier across two servers.
-  - **Default: A**, Anthony's lean, not yet agreed with Owen and Luke. Stage 1 doesn't depend on it (§6a). Either
-    option also settles F4: how one order of several SKUs maps to `place_order` calls.
+- **Q-supplier-tools (settled 14:40, Anthony):** use a real invoice when there is one, and the order receipt as a
+  stand-in until there is.
+  - **When the supplier provides an invoice**, it becomes the `bills` row and the receipt's `bill`, with a logged
+    `bill_received` event. Owen's open PR #26 adds `get_invoice(order_id)` to BakeSupply, returning
+    `amount_cents`, `due_date`, `supplier_email` and `po_number`, and an optional `po_number` on `place_order`
+    that links an order to `PO-2041` (F4). Its invoice has no pay-to account, so `pay_to_account` is still
+    copied from `vendors.bank_account`.
+  - **If it doesn't**, the receipt's `bill` is filled from the order response: a new `bill_id` (default
+    `BILL-<order id>`), `references_order`, `vendor_id`, and `amount_cents` from `total_cents`. `due_date` is a
+    placeholder, the date part of the order's `created_at`. `from` and `received_at` are left out, because no
+    supplier sent anything.
+  - **The `bills` row behind it (settled 15:00, Anthony):** `pay_bill` needs a `bills` row (`payments.bill_id`
+    references `bills.id`). The stand-in row copies what already exists on file: `from_addr` is the vendor's
+    `vendors.email` and `pay_to_account` is `vendors.bank_account`. There's no schema change. Empty values
+    wouldn't work, because the gate on main (`checks/gate.py`, 347248d) blocks a blank account in C4 and a blank
+    sender in C8.
+    - Cost: on a stand-in, C8 and the bill half of C4 compare the file with itself, so they pass without proving
+      anything. The `pay_bill` `to_account` half of C4 still means something. That's why a stand-in receipt can't be
+      `VERIFIED` (below).
+    - Still open: which `bakery-local` tool writes the `bills` row, stand-in or from `get_invoice`. Only the server
+      writes `bakery.db`, and the agent has no tool that writes invoices. This goes with F4 (Luke, Owen, Ronaldo).
+  - **The receipt shows the stand-in.** The `bill_received` event gets `source: "unverified"`, which the schema
+    says the UI marks (Lana to confirm the website does). The schema's `bill` has `additionalProperties: false`, so there's no stand-in flag on the bill
+    itself. Empty `from` and `received_at` are the stand-in's signature.
+  - **A real invoice replaces the stand-in when it arrives.** That covers `get_invoice` (if #26 merges), an inbox
+    message, or a seeded `bills` row. C5 and C8 then rerun against it.
+  - **Checks on a stand-in (default):** C5 would compare the order with itself, and C8 would compare the vendor's on-file sender with itself. So
+    neither may be recorded as `verified`, and the verdict can't be `VERIFIED` while the bill is a stand-in.
+    **None of this is enforced yet.** Today a stand-in receipt marked `VERIFIED` passes the schema,
+    `xref_problems` and `ledger_problems`. `PAY-BILL-ORDER` passes it, and `PAY-ON-TIME` warns on the placeholder
+    due date (reviewer run on `feature/payment-checks`). The work:
+    - a `ledger_problems` rule: `VERIFIED` with a `bill_received` event whose `source` is `unverified` is a
+      problem;
+    - `bill_matches_order` and `paid_on_time` skip when the `bill_received` event is `unverified`, because
+      nothing on the bill itself marks a stand-in. Stage 1
+    isn't affected: seeded BILL-07 is a real bill with `from_addr` and `pay_to_account` (§6a).
+  - Still open: how one order of several SKUs maps to `place_order` calls (F4).
 - **Q-smb-onboard:** the SMB plugin's `smb-onboard` saves its business profile to "the Cowork session memory
   directory" (`small-business/skills/smb-onboard/SKILL.md:41`). Where that lands under Claude Code is untested.
   Task 8 must check it, so our onboarding can read the profile and skip questions it already asked.
 - **Q-ask-in-server:** default D2 keeps the human prompt in a hook. Alternative: the server refuses any
   over-threshold payment unless the call carries an approval the owner gave. That is Future: it needs auth.
-- **Q-policy-seed (new 14:30):** Ronaldo restored `policies` and `accounts` at 14:23 (7bf070f). Two minutes later,
-  Anthony deferred policies and thresholds to #9. Anthony and Ronaldo decide:
-  - **Default:** the rows stay as seed data, and stage 1 doesn't check them.
-  - **Alternative:** stage 1 adds the threshold back, so C1 asks only over $500. A clean $800 payment of BILL-07
-    still asks.
-  - Either way the demo runs the same. The choice changes what `policy.sha256` hashes (F2) and whether
-    `chk_2`/`chk_6` stay in the sample (F3).
+- **Q-policy-seed (settled 14:40, Anthony):** onboarding generates the policies. The demo may use some of their
+  values, but mostly they support future functionality.
+  - The seeded `policies` rows (7bf070f) stand in for what onboarding would write.
+  - Stage 1 enforces none of them, and C1 still asks on every payment (D2).
+  - `policy.sha256` hashes the policy rows that exist when the receipt is written (F2).
+  - Which values the demo shows, and where (e.g. the website's Policies page on `feat/portal`), is Lana's and
+    Anthony's call.
+  - Where onboarding stores them stays issue #9.

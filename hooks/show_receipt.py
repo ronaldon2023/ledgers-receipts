@@ -8,7 +8,9 @@ call. When there is a new one, it runs the verifier the way `make receipt` does
 the portal link. If nothing listens on the portal port (env RECEIPTS_PORTAL_PORT, else 8000),
 the message also says how to start the portal. It never starts anything itself.
 
-It stays silent when stop_hook_active is set, when this session paid nothing, and when this
+It only acts in a Receipts checkout (receipts/verify.py present and .mcp.json registering a
+bakery-local server), and only counts calls to the bakery-local pay_bill tool by its exact
+name. It stays silent when stop_hook_active is set, when this session paid nothing, and when this
 session's newest payment was already reported. What was reported is kept per session in
 reported.json under $CLAUDE_PLUGIN_DATA (else a folder in the system temp dir), so the owner
 sees each link once. A failed build is not recorded, so the next turn tries again.
@@ -29,6 +31,8 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +40,23 @@ DEFAULT_PORT = 8000
 VERIFY_TIMEOUT_S = 20
 STATE_FILE = "reported.json"
 PASSING = ("verified", "pass")
+# Same pattern as the PreToolUse matcher in hooks/hooks.json. Used with fullmatch, because
+# `$` alone also accepts a trailing newline.
+PAY_BILL_TOOL = re.compile(r"^mcp__(plugin_ledgers-receipts_)?bakery-local__pay_bill$")
+
+
+def is_receipts_checkout(project: Path) -> bool:
+    """True when the folder has receipts/verify.py and a .mcp.json registering bakery-local.
+    The plugin runs in every folder, so this keeps the hook from running a folder's own
+    .venv/bin/python unless that folder is a Receipts checkout."""
+    if not (project / "receipts" / "verify.py").is_file():
+        return False
+    try:
+        config = json.loads((project / ".mcp.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return False
+    servers = config.get("mcpServers") if isinstance(config, dict) else None
+    return isinstance(servers, dict) and "bakery-local" in servers
 
 
 class BuildError(Exception):
@@ -77,7 +98,7 @@ def newest_payment(log: Path, session: str) -> dict[str, Any] | None:
             if (
                 isinstance(entry, dict)
                 and entry.get("session") == session
-                and str(entry.get("tool", "")).endswith("__pay_bill")
+                and PAY_BILL_TOOL.fullmatch(str(entry.get("tool", "")))
             ):
                 newest = entry
     return newest
@@ -138,10 +159,14 @@ def run_verify(project: Path) -> None:
         raise BuildError(f"the verifier exited with code {done.returncode}")
 
 
-def find_receipt(project: Path, bill_id: str) -> dict[str, Any]:
-    """The receipt the verifier wrote for this bill (its bill.bill_id), from fixtures/portal."""
+def find_receipt(project: Path, bill_id: str, since: float) -> dict[str, Any]:
+    """The receipt the verifier wrote for this bill (its bill.bill_id), from fixtures/portal.
+    Only files modified at or after `since` (less 1s of slack) count, so a receipt left over
+    from an earlier run can't stand in when this run skipped the bill."""
     for path in sorted((project / "fixtures" / "portal").glob("receipt_live_*.json")):
         try:
+            if path.stat().st_mtime < since - 1:
+                continue
             receipt = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
@@ -152,8 +177,9 @@ def find_receipt(project: Path, bill_id: str) -> dict[str, Any]:
 
 
 def _safe(text: Any, limit: int = 120) -> str:
-    """One line of shown text: no control characters, any run of 5+ digits cut to its last 4."""
-    text = re.sub(r"[\x00-\x1f\x7f]", " ", str(text))
+    """One line of shown text: control, format and other category C* characters (C1 controls,
+    bidi overrides) become spaces, and any run of 5+ digits is cut to its last 4."""
+    text = "".join(" " if unicodedata.category(ch).startswith("C") else ch for ch in str(text))
     text = re.sub(r"\d{5,}", lambda m: "••" + m.group()[-4:], text)
     return text if len(text) <= limit else text[:limit] + "..."
 
@@ -192,6 +218,8 @@ def report(event: Any) -> str | None:
         return None
     session = str(event.get("session_id") or "")
     project = project_dir()
+    if not is_receipts_checkout(project):
+        return None
     payment = newest_payment(log_path(project), session) if session else None
     if payment is None:
         return None
@@ -199,10 +227,10 @@ def report(event: Any) -> str | None:
     if already_reported(session, ts):
         return None
     tool_input = payment.get("input") if isinstance(payment.get("input"), dict) else {}
+    started = time.time()
     run_verify(project)
-    text = message(
-        project, find_receipt(project, str(tool_input.get("bill_id", ""))), portal_port()
-    )
+    receipt = find_receipt(project, str(tool_input.get("bill_id", "")), started)
+    text = message(project, receipt, portal_port())
     try:
         mark_reported(session, ts)
     except OSError:

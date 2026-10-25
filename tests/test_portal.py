@@ -748,3 +748,17 @@ def test_each_order_opens_its_own_receipt() -> None:
     assert "PO-2038&#39;s own receipt" not in page({**d, "orderReceipt": other}, "order/PO-2041")
     fallback = page(d, "order/PO-2038")  # no file for this order: the feed row, no crash
     assert "Order receipt · PO-2038" in fallback and "No receipt yet" in fallback
+
+
+@needs_node
+def test_rules_step_shows_saving_and_escaped_errors() -> None:
+    def step(onboard: dict) -> str:
+        out = run([{"data": data("pending"), "ui": {"view": "onboarding", "onboard": onboard}}])
+        return out[0]["main"]
+
+    busy = step({"step": 2, "saving": True})
+    assert 'data-onb="rules" disabled aria-busy="true">Saving…</button>' in busy
+    failed = step({"step": 2, "error": XSS})
+    assert '<p class="banner" role="alert">Your rules weren\'t saved: &lt;script&gt;' in failed
+    assert "<script" not in failed
+    assert ">Save rules</button>" in failed

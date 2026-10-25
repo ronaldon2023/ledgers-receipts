@@ -442,7 +442,8 @@ Portal.onboarding = function (d, ui) {
       num("r-floor", "Always keep in the bank", r.floor_cents) +
       '<h3>Always on</h3><ul class="checks plain"><li><span class="ic-ok">✓</span><span><b>Email only addresses on file</b></span></li>' +
       '<li><span class="ic-ok">✓</span><span><b>Pay only the account on file</b></span></li></ul>' +
-      '<div class="actions"><button type="button" class="btn primary" data-onb="rules">Save rules</button>' + back + '</div>';
+      (o.error ? '<p class="banner" role="alert">Your rules weren\'t saved: ' + esc(o.error) + '</p>' : '') +
+      '<div class="actions"><button type="button" class="btn primary" data-onb="rules"' + (o.saving ? ' disabled aria-busy="true">Saving…' : '>Save rules') + '</button>' + back + '</div>';
   } else {
     h += '<h2>You\'re set</h2><ol class="summary">' +
       '<li><b>Claude does the work</b><span>Orders supplies, pays bills and answers email, using the order and payment skills.</span></li>' +
@@ -584,6 +585,21 @@ if (typeof document !== "undefined") (function () {
     set({});
     timer = setTimeout(function () { ui.entering = null; }, 700);
   }
+  function saveRules(r) {
+    var body = {
+      approval_threshold_cents: r.threshold_cents,
+      monthly_budget_cents: r.no_budget ? null : r.budget_cents,
+      approved_suppliers: r.suppliers.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+      business_name: data.feed.business
+    };
+    return fetch("api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (b) {
+          if (!res.ok || !b.ok) throw new Error(b.error || "the portal couldn't save them");
+          return b;
+        });
+      }, function () { throw new Error("the portal server isn't reachable. Is python -m render.portal still running?"); });
+  }
   function onboardClick(t) {
     var o = ui.onboard, step = o.step || 0, act = t.getAttribute("data-onb");
     if (t.hasAttribute("data-copy")) {
@@ -595,12 +611,29 @@ if (typeof document !== "undefined") (function () {
     if (act === "again") { ui.onboard = { step: 0, rules: o.rules }; return set({ onboarded: false }); }
     if (act === "back") o.step = Math.max(0, step - 1);
     else if (act === "rules") {
+      if (o.saving) return;
       var dollars = function (id) { var v = Math.round(+document.getElementById(id).value); return (v > 0 ? v : 0) * 100; };
       var box = document.getElementById("r-budget"); // empty box: no limit; unreadable text is not empty
       var noBudget = box.value.trim() === "" && !(box.validity && box.validity.badInput);
       o.rules = { suppliers: document.getElementById("r-suppliers").value.trim(), threshold_cents: dollars("r-threshold"),
         budget_cents: noBudget ? null : dollars("r-budget"), no_budget: noBudget, floor_cents: dollars("r-floor") };
-      o.step = 3;
+      o.saving = true;
+      o.error = null;
+      set({});
+      // Saved into receipts-onboarding.json, the file Claude and the approval hook read.
+      saveRules(o.rules).then(function () {
+        o.saving = false;
+        o.step = 3;
+        last = ""; // re-read the file so Policies shows what was saved
+        load();
+        set({});
+        window.scrollTo(0, 0);
+      }, function (e) {
+        o.saving = false;
+        o.error = e.message;
+        set({});
+      });
+      return;
     } else if (act === "finish") { location.hash = "#dashboard"; return set({ onboarded: true }); }
     else o.step = step + 1; // signin, connected
     o.copied = null;

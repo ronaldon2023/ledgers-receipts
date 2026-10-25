@@ -16,7 +16,7 @@
   "owner_action": {
     "needed": true,
     "title": "Approve or decline paying BILL-07",
-    "why": "Payments over $500 need your passkey"
+    "why": "Payments over $500 need your approval"
   },
   "order": {
     "order_number": "PO-2041",

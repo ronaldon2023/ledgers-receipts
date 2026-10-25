@@ -13,9 +13,9 @@
       "limit_cents": 300000
     },
     "balance": {
-      "balance_cents": 512000,
+      "balance_cents": 480000,
       "floor_cents": 200000,
-      "note": "$4,320 if BILL-07 is paid"
+      "note": "$4,000 if BILL-07 is paid"
     },
     "run": {
       "steps": 7,
@@ -75,9 +75,10 @@
           "total_cents": 12000
         }
       ],
+      "verb": "proposed",
       "bill_id": null,
       "bill_due": null,
-      "receipt_note": "Not placed yet. Claude orders it only after you approve with your passkey, and its receipt starts when the order is submitted.",
+      "receipt_note": "Not placed yet. Claude orders it only after you approve it, and its receipt starts when the order is submitted.",
       "progress": [
         {
           "label": "Proposed by Claude",
@@ -89,6 +90,7 @@
         }
       ],
       "when_approved": {
+        "verb": "placed",
         "progress": [
           {
             "label": "Ordered",
@@ -172,14 +174,19 @@
       "short": "Sugar order, $120.00",
       "actions": [
         {
-          "label": "Approve with passkey",
+          "label": "Approve",
           "primary": true,
           "run": true,
+          "confirm_title": "Approve this order?",
+          "confirm_button": "Approve",
           "confirm": "Approve ordering 3 bags of cane sugar from Flour Co for $120.00."
         },
         {
           "label": "Decline",
-          "dismiss": true
+          "dismiss": true,
+          "confirm_title": "Decline this order?",
+          "confirm_button": "Decline",
+          "confirm": "Claude won't order the cane sugar."
         },
         {
           "label": "Open order",
@@ -205,14 +212,19 @@
       "short": "BILL-07, $800.00",
       "actions": [
         {
-          "label": "Approve with passkey",
+          "label": "Approve",
           "primary": true,
           "next": "stopped",
+          "confirm_title": "Approve this payment?",
+          "confirm_button": "Approve",
           "confirm": "Approve $800.00 to Flour Co, account ********4471."
         },
         {
           "label": "Decline",
-          "next": "declined"
+          "next": "declined",
+          "confirm_title": "Decline this payment?",
+          "confirm_button": "Decline",
+          "confirm": "Claude won't pay BILL-07. It stays open, due Tue 27 Oct."
         },
         {
           "label": "Open order receipt",
@@ -244,7 +256,8 @@
         "s2:log:2",
         "chk_4",
         "s2:log:4"
-      ]
+      ],
+      "card": "att_approve"
     },
     {
       "id": "ev_email",
@@ -282,7 +295,7 @@
       "order": "PO-2042",
       "bill": null,
       "title": "Ordered 3 bags of cane sugar from Flour Co, $120.00",
-      "detail": "You approved it with your passkey. Flour Co order ord_1.",
+      "detail": "You approved it. Flour Co order ord_1.",
       "steps": [
         "s3:log:7",
         "s3:log:8",
@@ -298,7 +311,7 @@
       "order": "PO-2042",
       "bill": null,
       "title": "Claude asks to order 3 bags of cane sugar from Flour Co, $120.00",
-      "detail": "Cane sugar runs out in about 2 days. October's supplies budget has $60 left, so it needs your passkey.",
+      "detail": "Cane sugar runs out in about 2 days. October's supplies budget has $60 left, so it needs your approval.",
       "steps": [
         "s3:log:1",
         "s3:log:2",
@@ -307,6 +320,7 @@
         "s3:log:5",
         "s3:log:6"
       ],
+      "card": "att_order",
       "requires": "att_inventory",
       "resolves": "att_order",
       "when_approved": {
@@ -351,7 +365,7 @@
       "order": "PO-2041",
       "bill": null,
       "title": "You approved order PO-2041",
-      "detail": "With your passkey. Supplies budget after: $2,940 of $3,000.",
+      "detail": "Supplies budget after: $2,940 of $3,000.",
       "steps": [
         "s1:log:1",
         "s1:log:2"
@@ -374,7 +388,7 @@
       "at": "2026-10-20T09:10:00-07:00",
       "actor": "you",
       "text": "Approved order PO-2041",
-      "call": "owner_approval · method=passkey",
+      "call": "owner_approval",
       "result": "approved",
       "order": "PO-2041"
     },
@@ -466,14 +480,14 @@
       "result": "asked",
       "order": "PO-2042",
       "requires": "att_inventory",
-      "note": "Approved supplier, but October's supplies budget has $60 left. This order would bring it to $3,060 of $3,000, so it needs your passkey."
+      "note": "Approved supplier, but October's supplies budget has $60 left. This order would bring it to $3,060 of $3,000, so it needs your approval."
     },
     {
       "id": "s3:log:7",
       "at": "2026-10-25T13:43:00-07:00",
       "actor": "you",
       "text": "Approved ordering 3 bags of cane sugar, $120.00",
-      "call": "owner_approval · method=passkey",
+      "call": "owner_approval",
       "result": "approved",
       "order": "PO-2042",
       "requires": "att_order"
@@ -560,10 +574,10 @@
       "at": "2026-10-25T14:00:00-07:00",
       "actor": "checks",
       "text": "Checked paying BILL-07 against your payment and budget policies",
-      "call": "payment_ready · limit $500 · balance after $4,320",
+      "call": "payment_ready · limit $500 · balance after $4,000",
       "result": "asked",
       "order": "PO-2041",
-      "note": "Over the $500 limit, so it needs your passkey. Balance stays above $2,000."
+      "note": "Over the $500 limit, so it needs your approval. Balance stays above $2,000."
     }
   ]
 }

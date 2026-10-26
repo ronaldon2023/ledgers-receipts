@@ -656,6 +656,18 @@ def test_summary_card_names_the_unpaid_bills() -> None:
 
 
 @needs_node
+def test_default_dashboard_shows_only_bill_07() -> None:
+    # pending is the default state: Claude has only reached BILL-07 so far.
+    for view in ["dashboard", "activities"]:
+        html = page(data("pending"), view, **CHECKED)
+        for hidden in ["BILL-08", "BILL-09", "PO-2038", "PO-2039"]:
+            assert hidden not in html, (view, hidden)
+        assert "BILL-07" in html
+    for state in ["stopped", "paid", "declined"]:
+        assert "BILL-08" in page(data(state)), state
+
+
+@needs_node
 def test_approving_bill_07_ends_in_success() -> None:
     pending = load("feed_pending.json")
     approve = next(c for c in pending["attention"] if c["id"] == "att_approve")

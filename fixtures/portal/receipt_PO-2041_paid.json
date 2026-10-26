@@ -248,6 +248,6 @@
     "s2:log:2": "list_bills  -> BILL-07 80000, BILL-08 20000, BILL-09 15000",
     "s2:log:4": "payment_ready  bill=BILL-07  amount=80000  -> balance after 432000",
     "s2:log:8": "pay_bill  bill=BILL-07  to_account=********4471  amount=80000  -> ok, id=pay_1  (row pay_1 in payments)",
-    "summary": "\"Paid all three Flour Co bills: BILL-07, BILL-08 and BILL-09.\""
+    "summary": "\"Paid BILL-07, $800.00, after you approved it. BILL-08 and BILL-09 were stopped and are still open.\""
   }
 }

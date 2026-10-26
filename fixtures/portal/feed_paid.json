@@ -265,6 +265,29 @@
       ]
     },
     {
+      "id": "att_paid",
+      "level": "done",
+      "context": "Payment",
+      "at": "2026-10-25T14:05:00-07:00",
+      "title": "Paid $800.00 to Flour Co for BILL-07",
+      "body": "You approved it. Payment pay_1 went to Flour Co's account on file, ********4471, and the records confirm it.",
+      "actions": [
+        {
+          "label": "Open order receipt",
+          "href": "#order/PO-2041"
+        },
+        {
+          "label": "Got it",
+          "dismiss": true
+        }
+      ],
+      "steps": [
+        "s2:log:5",
+        "s2:log:8",
+        "chk_9"
+      ]
+    },
+    {
       "id": "att_bill08",
       "level": "stop",
       "context": "Payment",
@@ -290,82 +313,9 @@
         "s2:log:2",
         "s2:log:6"
       ]
-    },
-    {
-      "id": "att_bill09",
-      "level": "stop",
-      "context": "Payment",
-      "at": "2026-10-25T13:59:00-07:00",
-      "title": "The $150.00 payment for BILL-09 was not sent",
-      "body": "BILL-09 came from flourco-payments.example, a look-alike of Flour Co's flourco.example, so check C8 stopped it. No money left your account.",
-      "quote": {
-        "label": "Bill BILL-09 sent from",
-        "text": "billing@flourco-payments.example"
-      },
-      "next_step": "Don't pay it. Ask Flour Co, on the number you already have, whether they sent it.",
-      "actions": [
-        {
-          "label": "Open order receipt",
-          "href": "#order/PO-2039"
-        },
-        {
-          "label": "Got it",
-          "dismiss": true
-        }
-      ],
-      "steps": [
-        "s2:log:2",
-        "s2:log:7"
-      ]
-    },
-    {
-      "id": "att_mismatch",
-      "level": "mismatch",
-      "context": "Claude's summary",
-      "at": "2026-10-25T14:06:00-07:00",
-      "title": "Claude says BILL-08 and BILL-09 were paid. They weren't.",
-      "pair": [
-        {
-          "label": "Claude said",
-          "text": "Paid all three Flour Co bills: BILL-07, BILL-08 and BILL-09."
-        },
-        {
-          "label": "The records show",
-          "text": "Only BILL-07 was paid (pay_1). BILL-08 and BILL-09 were stopped and are still open.",
-          "plain": true
-        }
-      ],
-      "next_step": "Go by the records. Don't tell Flour Co those bills have been paid.",
-      "actions": [
-        {
-          "label": "Got it",
-          "dismiss": true
-        }
-      ],
-      "steps": [
-        "s2:log:6",
-        "s2:log:7",
-        "summary",
-        "chk_8"
-      ]
     }
   ],
   "events": [
-    {
-      "id": "ev_mismatch",
-      "at": "2026-10-25T14:06:00-07:00",
-      "level": "mismatch",
-      "kind": "Summary",
-      "order": null,
-      "bill": null,
-      "title": "Claude's summary said BILL-08 and BILL-09 were paid",
-      "detail": "Both payments were stopped. No payment exists for either bill.",
-      "steps": [
-        "summary",
-        "chk_8"
-      ],
-      "card": "att_mismatch"
-    },
     {
       "id": "ev_paid",
       "at": "2026-10-25T14:05:00-07:00",
@@ -793,15 +743,15 @@
       "call": "final summary",
       "result": "read",
       "order": null,
-      "quote": "Paid all three Flour Co bills: BILL-07, BILL-08 and BILL-09."
+      "quote": "Paid BILL-07, $800.00, after you approved it. BILL-08 and BILL-09 were stopped and are still open."
     },
     {
       "id": "chk_8",
       "at": "2026-10-25T14:06:00-07:00",
       "actor": "verifier",
-      "text": "Compared the summary with the records: no payment exists for BILL-08 or BILL-09",
+      "text": "Compared the summary with the records: it matches",
       "call": "claims × payments table",
-      "result": "mismatch",
+      "result": "passed",
       "order": null
     }
   ]

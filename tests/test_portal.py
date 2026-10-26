@@ -844,9 +844,17 @@ def test_cleaned_up_glance_tiles_and_activities_bar() -> None:
 def test_sidebar_is_collapsible() -> None:
     side = run([{"data": data("pending"), "ui": {"view": "dashboard", "filter": "all"}}])[0]["side"]
     assert 'data-act="nav" aria-expanded="true" aria-label="Collapse sidebar"' in side
-    for label in ["Dashboard", "Activities", "Policies", "Start onboarding", "Restart demo"]:
+    for label in [
+        "Dashboard",
+        "Activities",
+        "Policies",
+        "Passkeys",
+        "API keys",
+        "Start onboarding",
+        "Restart demo",
+    ]:
         assert f'title="{label}"' in side and f'<span class="lbl">{label}</span>' in side
-    assert side.count('<svg class="ico"') == 6  # five items plus the toggle
+    assert side.count('<svg class="ico"') == 8  # seven items plus the toggle
     folded = run([{"data": data("pending"), "ui": {"view": "dashboard", "navCollapsed": True}}])[0]
     assert 'aria-expanded="false" aria-label="Expand sidebar"' in folded["side"]
 

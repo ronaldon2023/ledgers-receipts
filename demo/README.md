@@ -1,0 +1,29 @@
+# Demo
+
+Everything for the three-minute pitch lives here: the storyboard, ideas, slides and assets.
+
+**Owner:** Owen, for now.
+
+## What goes where
+
+| Path | What it holds |
+| --- | --- |
+| `storyboard.md` | The scene-by-scene plan with timing, what's on screen and what we say |
+| `ideas/` | Notes and research that feed the pitch (one file per topic) |
+| `slides/` | The slide deck and its source |
+| `assets/` | Screenshots, the backup video, and other media |
+
+## Ground rules
+
+- Keep the pitch to who it's for, the problem, and how Receipts solves it. If a scene doesn't help with one of those, cut it.
+- Use example domains (`*.example`) and the seeded Sweet Rose Bakery data only. No real people, accounts or secrets.
+- Change `storyboard.md` through a PR so the team sees timing changes. Scene times must still add up to 3:00.
+- Large media (video, big images) stays out of git. Put a link in `assets/README.md` instead.
+
+## Open
+
+- Who owns the slides and the backup video? Nobody yet.
+- Add a `demo/` row (owner: Owen) to the `CLAUDE.md` ownership table. That table is shared, so it needs the team's okay.
+- Product name: proposed "Receipts, by The Ledgers". The owner portal (#11) still says "Ledger". Needs the team's okay.
+- Record scene 2 now: #15, #14 and #24 are merged. The install steps are in the README's "Install the plugin" section and the questions are in the onboarding skill. One manual pass is still needed, because the questions need an interactive session.
+- Scene 6 (the false claim) has nothing behind it yet: claim checking isn't built, so use a prepared summary and say so.

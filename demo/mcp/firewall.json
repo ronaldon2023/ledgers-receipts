@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "bakery-local": {
+      "type": "http",
+      "url": "<the firewall's URL for the bakery server>"
+    },
+    "bakesupply": {
+      "type": "http",
+      "url": "<the firewall's URL for BakeSupply>"
+    }
+  }
+}

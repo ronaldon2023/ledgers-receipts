@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "bakery-local": {
+      "command": "python",
+      "args": ["-m", "bakery.server"],
+      "env": {
+        "BAKERY_DB": "bakery.db",
+        "BAKERY_FAULTS": "drop_draft:orders@oakcafe.example"
+      }
+    },
+    "bakesupply": {
+      "command": "python",
+      "args": ["-m", "bakesupply.server"],
+      "env": {
+        "BAKESUPPLY_DB": "bakesupply.db"
+      }
+    }
+  }
+}

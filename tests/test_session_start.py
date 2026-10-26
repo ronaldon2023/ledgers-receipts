@@ -14,6 +14,7 @@ ANSWERS = "receipts-onboarding.json"
 def run_hook(project: Path, **extra: str) -> str:
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(project)}
     env.pop("RECEIPTS_ONBOARDING", None)
+    env.pop("CLAUDE_PLUGIN_ROOT", None)
     env.update(extra)
     done = subprocess.run(
         [sys.executable, str(HOOK)], env=env, capture_output=True, text=True, check=True
@@ -24,7 +25,13 @@ def run_hook(project: Path, **extra: str) -> str:
 def test_missing_answers_start_onboarding(tmp_path: Path) -> None:
     out = run_hook(tmp_path)
     assert "/ledgers-receipts:onboarding" in out
+    assert f"cd {ROOT} && python3 -m render.portal --business-dir {tmp_path.resolve()}" in out
     assert f"{ANSWERS} is missing" in out
+
+
+def test_portal_command_runs_from_plugin_root(tmp_path: Path) -> None:
+    out = run_hook(tmp_path, CLAUDE_PLUGIN_ROOT="/opt/plug in")
+    assert "cd '/opt/plug in' && python3 -m render.portal" in out
 
 
 @pytest.mark.parametrize("content", ["{not json", "[]", "null", "[" * 100000])

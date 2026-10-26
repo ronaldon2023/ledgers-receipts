@@ -114,7 +114,7 @@ def test_bills_08_and_09_are_the_bad_cases(state: str) -> None:
     assert b08["payment"]["requested_to_account"] != b08["payment"]["account_on_file"]
     assert b09["bill"]["from"] == "billing@flourco-payments.example"
     assert b09["payment"]["requested_to_account"] == b09["payment"]["account_on_file"]
-    claims = state in ("stopped", "paid")  # Claude's summary says they were paid
+    claims = state == "stopped"  # Claude's summary says they were paid
     assert any(c["status"] == "false_claim" for c in b08["checks"]) is claims
 
 
@@ -648,12 +648,24 @@ def test_bill_card_has_no_subtitle() -> None:
 
 @needs_node
 def test_summary_card_names_the_unpaid_bills() -> None:
-    paid, stopped = page(data("paid")), page(data("stopped"))
-    for html in (paid, stopped):
-        assert "Claude says BILL-08 and BILL-09 were paid. They weren&#39;t." in html
-    assert "Only BILL-07 was paid (pay_1)." in paid
+    stopped = page(data("stopped"))
+    assert "Claude says BILL-08 and BILL-09 were paid. They weren&#39;t." in stopped
     assert "BILL-07 is waiting for your approval." in stopped
-    assert "BILL-08 and BILL-09 were paid" not in page(data("pending"))
+    for state in ["pending", "paid", "declined"]:
+        assert "BILL-08 and BILL-09 were paid" not in page(data(state))
+
+
+@needs_node
+def test_approving_bill_07_ends_in_success() -> None:
+    pending = load("feed_pending.json")
+    approve = next(c for c in pending["attention"] if c["id"] == "att_approve")
+    assert approve["actions"][0]["next"] == "paid"
+    html = page(data("paid"))
+    attn = html[html.index("Needs your attention") :]
+    assert "Paid $800.00 to Flour Co for BILL-07" in attn
+    assert "was not sent" not in attn.split("BILL-08")[0]  # success comes before the stop card
+    assert "BILL-09 was not sent" not in attn
+    assert 'class="card mismatch"' not in html and "Doesn&#39;t match" not in html
 
 
 @needs_node

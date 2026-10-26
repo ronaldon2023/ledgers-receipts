@@ -213,7 +213,7 @@
     },
     {
       "source": "Open bills",
-      "count": 3
+      "count": 1
     }
   ],
   "left_business": [
@@ -245,9 +245,9 @@
     "s1:log:3": "create_order  vendor=V-1  items=2  total=80000  -> ok, id=PO-2041  (row PO-2041 in orders)",
     "s1:log:4": "send_email  to=billing@flourco.example  subject=\"Order PO-2041\"  -> ok, id=out_1  (row out_1 in outbox)",
     "s2:log:1": "read_inbox  -> 6 messages",
-    "s2:log:2": "list_bills  -> BILL-07 80000, BILL-08 20000, BILL-09 15000",
+    "s2:log:2": "list_bills  -> BILL-07  vendor=V-1  amount=80000  due=2026-10-27",
     "s2:log:4": "payment_ready  bill=BILL-07  amount=80000  -> balance after 432000",
     "s2:log:8": "pay_bill  bill=BILL-07  to_account=********4471  amount=80000  -> ok, id=pay_1  (row pay_1 in payments)",
-    "summary": "\"Paid BILL-07, $800.00, after you approved it. BILL-08 and BILL-09 were stopped and are still open.\""
+    "summary": "\"Paid BILL-07, $800.00, to Flour Co's account on file after you approved it.\""
   }
 }

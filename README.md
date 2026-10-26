@@ -9,9 +9,24 @@ Built by The Ledgers at the Claude Impact Lab Hackathon, Seattle, October 2026.
 
 ## What the owner sees
 
-Design mock with sample data (see `docs/mock/`). Feedback welcome.
+The owner portal (`render/portal/`), shown here with the demo data for Sweet Rose Bakery.
+Run it with `python -m render.portal`.
 
-![Receipt mock for Sweet Rose Bakery: an ISSUES FOUND verdict, a grid showing where each problem was caught, and the list of checks](docs/mock/receipt.png)
+**Onboarding.** The owner signs in, connects Claude Code and sets their payment rules.
+
+![Portal onboarding, step 1 of 4: sign in with a passkey, then connect Claude Code, set your rules, and finish](docs/screenshots/onboarding.png)
+
+**Dashboard.** Budget and balance at a glance, and anything waiting on the owner, such as a
+payment over their approval limit.
+
+![Portal dashboard: budget, balance and run tiles, an inventory check card, and an $800 Flour Co payment waiting for approval](docs/screenshots/dashboard.png)
+
+**Order receipt.** One page per order: where it stands, what was bought, and every check plain
+code ran, with the log lines behind each one.
+
+![Order receipt for PO-2041: ISSUES FOUND because an email asked to pay a different bank account, the payment was blocked, and Claude's summary claims a payment that doesn't exist](docs/screenshots/order-receipt.png)
+
+The original design mock is in `docs/mock/`.
 
 ## Install the plugin
 
@@ -69,13 +84,45 @@ belongs in your environment only.
 
 ## Layout
 
-- `bakery/`: mock bakery MCP server (the "real world" the agent works in)
-- `claims/`: turns the agent's final summary into structured claims
-- `receipts/`: guard, log masking, hash chain, verifier
-- `render/`: renders `receipt.json` as a one-page HTML receipt
-- `contracts/`: the shared JSON schemas and samples
+The "real world" the agent works in:
 
-The build plan is in `docs/PLAN.md`. See `CLAUDE.md` for how the team works with Claude in this repo.
+- `bakery/`: the `bakery-local` MCP server (bills, invoices, orders, inbox), its seed data
+  and injected faults
+- `bakesupply/`: the `bakesupply` MCP server, a mock flour supplier the bakery orders from
+
+Checking the agent's work:
+
+- `receipts/`: the hash chain (`chain.py`), the logging hook (`hook_log.py`), number masking
+  (`pii.py`), the verifier that turns the log into receipts (`verify.py`) and the portal's
+  dashboard feed (`feed.py`)
+- `checks/`: the rules a write must pass before it runs (`gate.py`), payment checks on a
+  receipt (`payment.py`), and read-only access to the records (`source.py`)
+- `claims/`: will turn the agent's final summary into structured claims (not started yet)
+
+What the owner sees:
+
+- `render/portal/`: the owner portal website (Dashboard, Activities, Policies, one page per
+  order receipt). See `render/portal/README.md` to run it
+- `docs/mock/`: the receipt design mock and the order receipt schema
+
+The Claude Code plugin:
+
+- `.claude-plugin/`: the plugin and marketplace manifests
+- `hooks/`: `session_start.py` starts onboarding, `approve_payment.py` asks the owner before a
+  large payment, `show_receipt.py` links the receipt after a payment (wired up in `hooks.json`)
+- `skills/onboarding/`: asks the owner about their tools and payment rules
+- `.mcp.json`: registers the two MCP servers
+
+Supporting files:
+
+- `contracts/`: the shared JSON schemas and samples
+- `fixtures/`: the sample log and the portal's sample feeds and receipts
+- `scripts/`: helpers, such as `make_sample_log.py`
+- `tests/`: pytest suite, run with `make test`
+- `docs/`: the build plan (`PLAN.md`), the order lifecycle plan, plugin research and the
+  whiteboard notes
+
+See `CLAUDE.md` for how the team works with Claude in this repo.
 
 ## License
 

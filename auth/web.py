@@ -13,16 +13,29 @@ product rather than a bolted-on admin form."""
 
 from __future__ import annotations
 
+import os
 import secrets
 import uuid
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fido2.webauthn import AuthenticationResponse, RegistrationResponse
 from pydantic import BaseModel
 
 from auth import shared
 from auth.webauthn import WebAuthnError
+
+# Lets another page (e.g. render/portal, a different origin/port) call this API's
+# /api/* endpoints with the browser's real navigator.credentials -- fido2's own origin
+# check only cares that the page's hostname matches RP_ID, not its port, so this is
+# just unblocking the browser's separate same-origin request restriction.
+_DEFAULT_ALLOWED_ORIGINS = ["http://localhost:8000", "http://localhost:8010", shared.ORIGIN]
+ALLOWED_ORIGINS = [
+    o
+    for o in os.environ.get("AUTH_ALLOWED_ORIGINS", ",".join(_DEFAULT_ALLOWED_ORIGINS)).split(",")
+    if o
+]
 
 # Short-lived, in-memory, process-local state -- fine for a ceremony that
 # starts and finishes within one browser tab's lifetime; nothing here
@@ -49,6 +62,12 @@ def _account_from_session(authorization: str | None):
 
 def build_auth_app() -> FastAPI:
     app = FastAPI(title="The Ledger — Account")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_methods=["GET", "POST"],
+        allow_headers=["authorization", "content-type"],
+    )
 
     @app.get("/", response_class=HTMLResponse)
     def signup_page() -> str:

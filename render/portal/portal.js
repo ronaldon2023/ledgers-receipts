@@ -425,7 +425,9 @@ Portal.onboarding = function (d, ui) {
   if (step === 0) {
     h += '<h2>Welcome, ' + esc(d.feed.owner) + '</h2><p>Ledger shows you everything Claude does for your business. Claude does the work, plain code checks every step, and nothing over your limits happens without you.</p>' +
       '<div class="confirmbox"><strong>Sign in with your passkey</strong><span>Use Touch ID, Face ID or your security key to sign in to Ledger. There\'s no password to steal.</span>' +
-      '<div class="actions"><button type="button" class="btn primary" data-onb="signin">Use passkey</button></div></div>';
+      '<div class="actions"><button type="button" class="btn primary" data-onb="signin"' + (o.signingIn ? " disabled" : "") + '>' +
+      (o.signingIn ? "Waiting for your passkey…" : "Use passkey") + '</button></div></div>' +
+      (o.authError ? '<p class="banner" role="alert">' + esc(o.authError) + "</p>" : "");
   } else if (step === 1) {
     var cmd = function (c, i) {
       return '<div class="cmd"><code>' + esc(c) + '</code><button type="button" class="btn" data-copy="' + i + '">' + (o.copied === i ? 'Copied' : 'Copy') + '</button></div>';
@@ -490,12 +492,20 @@ Portal.page = function (d, ui) {
 /* ---------- browser start-up: load the JSON, check it again every second, handle clicks ---------- */
 if (typeof document !== "undefined") (function () {
   var KEY = "receipts-portal-v3", STATES = ["pending", "stopped", "paid", "declined", "live"];
+  // The real passkey auth app from auth/web.py -- set window.LEDGER_AUTH_BASE before this
+  // script loads to point at a different host/port.
+  var AUTH_BASE = window.LEDGER_AUTH_BASE || "http://localhost:8430";
   var ui = { state: "pending", filter: "all", feedView: "order", confirming: null, dismissed: {}, ran: {}, onboarded: false, onboard: { step: 0 } };
   var data = null, last = "", side = document.getElementById("side"), app = document.getElementById("app");
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "null");
     if (saved && STATES.indexOf(saved.state) >= 0) { ui.state = saved.state; ui.dismissed = saved.dismissed || {}; ui.ran = saved.ran || {}; }
-    if (saved) { ui.onboarded = !!saved.onboarded; ui.onboard.rules = saved.rules; ui.navCollapsed = !!saved.navCollapsed; }
+    if (saved) {
+      ui.onboarded = !!saved.onboarded;
+      ui.onboard.rules = saved.rules;
+      ui.navCollapsed = !!saved.navCollapsed;
+      ui.onboard.passkeyAccountId = saved.passkeyAccountId || null;
+    }
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
   // ?state= starts that demo state fresh, so a rehearsal's clicks don't leak into the next run.
@@ -528,7 +538,9 @@ if (typeof document !== "undefined") (function () {
   function set(p) {
     for (var k in p) ui[k] = p[k];
     try {
-      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran, navCollapsed: !!ui.navCollapsed, onboarded: ui.onboarded, rules: ui.onboard.rules }));
+      localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran,
+        navCollapsed: !!ui.navCollapsed, onboarded: ui.onboarded, rules: ui.onboard.rules,
+        passkeyAccountId: ui.onboard.passkeyAccountId }));
     } catch (e) { /* ignore */ }
     render();
   }
@@ -606,15 +618,64 @@ if (typeof document !== "undefined") (function () {
         });
       }, function () { throw new Error("the portal server isn't reachable. Is python -m render.portal still running?"); });
   }
+  // Real WebAuthn against auth/web.py: a first-time owner registers a passkey (signup), a
+  // returning one signs in with the one already on file (passkeyAccountId, saved locally) --
+  // both are genuine ceremonies through navigator.credentials, not a mock.
+  function passkeySignIn() {
+    var o = ui.onboard, returning = !!o.passkeyAccountId;
+    o.signingIn = true;
+    o.authError = null;
+    set({});
+    var begin = returning
+      ? fetch(AUTH_BASE + "/api/login/begin", { method: "POST" }).then(function (r) { return r.json(); })
+      : fetch(AUTH_BASE + "/api/signup/begin", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ display_name: data.feed.owner }),
+        }).then(function (r) { return r.json(); });
+    begin.then(function (b) {
+      if (returning) {
+        var getOpts = PublicKeyCredential.parseRequestOptionsFromJSON(b.options.publicKey);
+        return navigator.credentials.get({ publicKey: getOpts }).then(function (cred) {
+          return fetch(AUTH_BASE + "/api/login/complete", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ login_id: b.login_id, credential: cred.toJSON() }),
+          }).then(function (r) { return r.json(); });
+        });
+      }
+      var createOpts = PublicKeyCredential.parseCreationOptionsFromJSON(b.options.publicKey);
+      return navigator.credentials.create({ publicKey: createOpts }).then(function (cred) {
+        return fetch(AUTH_BASE + "/api/signup/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ registration_id: b.registration_id, credential: cred.toJSON() }),
+        }).then(function (r) { return r.json(); });
+      });
+    }).then(function (result) {
+      if (!result.session_token) throw new Error(result.detail || "no session returned");
+      o.passkeyAccountId = result.account_id;
+      o.signingIn = false;
+      o.step = (o.step || 0) + 1;
+      o.copied = null;
+      set({});
+      window.scrollTo(0, 0);
+    }).catch(function (err) {
+      o.signingIn = false;
+      o.authError = "Couldn't sign in with your passkey: " + ((err && err.message) || err);
+      set({});
+    });
+  }
   function onboardClick(t) {
     var o = ui.onboard, step = o.step || 0, act = t.getAttribute("data-onb");
+    if (act === "signin") return passkeySignIn();
     if (t.hasAttribute("data-copy")) {
       var i = +t.getAttribute("data-copy"), text = i === 0 ? "claude" : Portal.INSTALL[i - 1];
       if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () { /* copy blocked */ });
       o.copied = i;
       return set({});
     }
-    if (act === "again") { ui.onboard = { step: 0, rules: o.rules }; return set({ onboarded: false }); }
+    if (act === "again") { ui.onboard = { step: 0, rules: o.rules, passkeyAccountId: o.passkeyAccountId }; return set({ onboarded: false }); }
     if (act === "back") o.step = Math.max(0, step - 1);
     else if (act === "rules") {
       if (o.saving) return;
@@ -641,7 +702,7 @@ if (typeof document !== "undefined") (function () {
       });
       return;
     } else if (act === "finish") { location.hash = "#dashboard"; return set({ onboarded: true }); }
-    else o.step = step + 1; // signin, connected
+    else o.step = step + 1; // connected
     o.copied = null;
     set({});
     window.scrollTo(0, 0);

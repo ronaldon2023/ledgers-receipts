@@ -253,7 +253,9 @@ Portal.ICON = (function () {
     onboarding: svg('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'),
     reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
     collapse: svg('<path d="M15 6l-6 6 6 6"/>'),
-    expand: svg('<path d="M9 6l6 6-6 6"/>')
+    expand: svg('<path d="M9 6l6 6-6 6"/>'),
+    security: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+    keys: svg('<circle cx="8" cy="15" r="3.5"/><path d="M10.5 12.5L21 2"/><path d="M16 7l2 2"/><path d="M19 4l2 2"/>')
   };
 })();
 
@@ -261,6 +263,7 @@ Portal.ICON = (function () {
 Portal.header = function (title, sub) {
   return '<header class="top"><div><h1>' + Portal.esc(title) + '</h1>' + (sub ? '<p>' + Portal.esc(sub) + '</p>' : '') + '</div></header>';
 };
+Portal.when = function (at) { return Portal.day(at) + " " + Portal.time(at); };
 Portal.dashboard = function (d, ui) {
   var esc = Portal.esc, f = d.feed, g = f.glance, cards = Portal.attention(f, ui);
   var pct = Math.floor(g.budget.used_cents / g.budget.limit_cents * 100); // round down: 99.7% is not "100% used"
@@ -352,6 +355,57 @@ Portal.policies = function (d) {
       '<div class="tablewrap"><table><thead><tr><th style="width:62%">Rule</th><th>Setting</th></tr></thead><tbody>' +
       list.map(function (p) { return '<tr><td>' + esc(p.title) + '</td><td class="mono small">' + esc(p.setting) + '</td></tr>'; }).join("") + '</tbody></table></div></section>';
   });
+  return h;
+};
+
+/* ---------- passkeys and API keys: live account data from auth/web.py, not a fixture.
+   ui.security / ui.keys carry whatever the last fetch found (see the browser start-up
+   block's loadSecurity()/loadKeys()) -- these are pure render functions over that state,
+   same as every other view here, they just read live state instead of feed JSON. */
+Portal.security = function (d, ui) {
+  var esc = Portal.esc, s = ui.security || {};
+  var h = Portal.header("Passkeys", "Anyone with one of these can sign in as you. Remove any you don't recognize.");
+  if (s.error) h += '<p class="banner" role="alert">' + esc(s.error) + "</p>";
+  var rows = (s.passkeys || []).map(function (p) {
+    var renaming = s.renaming === p.credential_id;
+    var name = renaming
+      ? '<input type="text" class="tableinput" data-rename-input="' + esc(p.credential_id) + '" value="' + esc(p.name) + '">'
+      : esc(p.name);
+    var actions = renaming
+      ? '<button type="button" class="btn ghost" data-save-rename="' + esc(p.credential_id) + '">Save</button>'
+      : '<button type="button" class="btn ghost" data-rename="' + esc(p.credential_id) + '">Rename</button>' +
+        '<button type="button" class="btn ghost" data-remove-passkey="' + esc(p.credential_id) + '">Remove</button>';
+    return "<tr><td>" + name + '</td><td class="small muted">' + esc(p.device) + '</td><td class="small muted">' +
+      esc(Portal.when(p.created_at)) + '</td><td class="small muted">' +
+      (p.last_used_at ? esc(Portal.when(p.last_used_at)) : "never") + "</td><td>" + actions + "</td></tr>";
+  }).join("");
+  h += '<section><div class="tablewrap"><table><thead><tr><th>Name</th><th>Device</th><th>Added</th><th>Last used</th><th></th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="5" class="muted">' + (s.loading ? "Loading…" : "No passkeys yet.") + "</td></tr>") +
+    '</tbody></table></div><div class="actions"><label class="field" style="max-width:260px"><span><b>Name this passkey (optional)</b></span>' +
+    '<input type="text" id="new-passkey-name" placeholder="e.g. &quot;Work laptop&quot;"></label>' +
+    '<button type="button" class="btn primary" id="add-passkey"' + (s.adding ? " disabled" : "") + ">" +
+    (s.adding ? "Waiting for your passkey…" : "Add a passkey") + "</button></div></section>";
+  return h;
+};
+Portal.keys = function (d, ui) {
+  var esc = Portal.esc, s = ui.keys || {};
+  var h = Portal.header("API keys", "For a non-browser caller -- an MCP server, a script -- that can't sign in with a passkey.");
+  if (s.error) h += '<p class="banner" role="alert">' + esc(s.error) + "</p>";
+  if (s.newKey) h += '<div class="confirmbox"><strong>Copy this key now -- you won\'t see it again.</strong>' +
+    '<span class="mono small" style="word-break:break-all">' + esc(s.newKey) + "</span></div>";
+  var rows = (s.keys || []).map(function (k) {
+    var status = k.revoked ? '<span class="b b-mute">Revoked</span>'
+      : '<button type="button" class="btn ghost" data-revoke-key="' + esc(k.key_id) + '">Revoke</button>';
+    return "<tr><td>" + esc(k.name) + '</td><td class="mono small">' + esc(k.prefix) + '•••••••••</td><td class="small muted">' +
+      esc(Portal.when(k.created_at)) + '</td><td class="small muted">' +
+      (k.last_used_at ? esc(Portal.when(k.last_used_at)) : "never") + "</td><td>" + status + "</td></tr>";
+  }).join("");
+  h += '<section><div class="tablewrap"><table><thead><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="5" class="muted">' + (s.loading ? "Loading…" : "No API keys yet.") + "</td></tr>") +
+    '</tbody></table></div><div class="actions"><label class="field" style="max-width:260px"><span><b>Name this key (optional)</b></span>' +
+    '<input type="text" id="new-key-name" placeholder="e.g. &quot;BakeSupply MCP server&quot;"></label>' +
+    '<button type="button" class="btn primary" id="create-key"' + (s.creating ? " disabled" : "") + ">" +
+    (s.creating ? "Creating…" : "Create a key") + "</button></div></section>";
   return h;
 };
 
@@ -471,16 +525,19 @@ Portal.page = function (d, ui) {
   if (view === "onboarding") return { side: "", main: Portal.onboarding(d, ui) }; // no sidebar during setup
   var broken = d.feed.chain_ok === false || (d.receipt ? d.receipt.sessions : []).some(function (s) { return !s.ok; });
   var main = view.indexOf("order/") === 0 ? Portal.order(d, view.slice(6)) : view === "policies" ? Portal.policies(d)
+    : view === "security" ? Portal.security(d, ui) : view === "keys" ? Portal.keys(d, ui)
     : view === "activities" ? Portal.activities(d, ui) : Portal.dashboard(d, ui);
   if (broken) main = '<p class="banner" role="alert">Untrusted: the activity log failed its tamper check. Don\'t rely on anything here until it\'s fixed.</p>' + main;
   // An order page keeps the page you came from highlighted.
-  var cur = view === "policies" || view === "activities" ? view : view.indexOf("order/") === 0 && ui.from ? ui.from : "dashboard";
+  var NAV_VIEWS = ["policies", "activities", "security", "keys"];
+  var cur = NAV_VIEWS.indexOf(view) >= 0 ? view : view.indexOf("order/") === 0 && ui.from ? ui.from : "dashboard";
   // Collapsible: the toggle shrinks the sidebar to icons; each item keeps its name as a tooltip.
   var toggle = '<button type="button" class="navtoggle" data-act="nav" aria-expanded="' + !collapsed + '" aria-label="' +
     (collapsed ? "Expand sidebar" : "Collapse sidebar") + '" title="' + (collapsed ? "Expand sidebar" : "Collapse sidebar") + '">' + Portal.ICON[collapsed ? "expand" : "collapse"] + '</button>';
   var item = function (icon, label) { return Portal.ICON[icon] + '<span class="lbl">' + esc(label) + '</span>'; };
   var side = '<div class="sidetop">' + brand + toggle + '</div>' +
-    [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"]].map(function (l) {
+    [["dashboard", "Dashboard"], ["activities", "Activities"], ["policies", "Policies"],
+      ["security", "Passkeys"], ["keys", "API keys"]].map(function (l) {
       return '<a href="#' + l[0] + '" title="' + esc(l[1]) + '"' + (l[0] === cur ? ' aria-current="page"' : '') + '>' + item(l[0], l[1]) + '</a>';
     }).join("") + '<div class="navbtns"><button type="button" class="btn" data-onb="again" title="Start onboarding">' + item("onboarding", "Start onboarding") + '</button>' +
     '<button type="button" class="btn" data-act="reset" title="Restart demo">' + item("reset", "Restart demo") + '</button></div>' +
@@ -505,6 +562,7 @@ if (typeof document !== "undefined") (function () {
       ui.onboard.rules = saved.rules;
       ui.navCollapsed = !!saved.navCollapsed;
       ui.onboard.passkeyAccountId = saved.passkeyAccountId || null;
+      ui.onboard.sessionToken = saved.sessionToken || null;
     }
   } catch (e) { /* storage blocked: start fresh */ }
   var asked = /[?&]state=(\w+)/.exec(location.search); // ?state=stopped opens a demo state directly
@@ -516,19 +574,65 @@ if (typeof document !== "undefined") (function () {
   function view() {
     var h = (location.hash || "").slice(1);
     if (!ui.onboarded) return "onboarding";
-    return h === "policies" || h === "activities" || h.indexOf("order/") === 0 ? h : "dashboard";
+    return h === "policies" || h === "activities" || h === "security" || h === "keys" || h.indexOf("order/") === 0
+      ? h : "dashboard";
   }
-  var TITLES = { dashboard: "Dashboard", activities: "Activities", policies: "Policies", onboarding: "Set up" };
+  var TITLES = { dashboard: "Dashboard", activities: "Activities", policies: "Policies",
+    security: "Passkeys", keys: "API keys", onboarding: "Set up" };
   function render() {
     if (!data) return;
     ui.view = view();
     if (ui.view === "dashboard" || ui.view === "activities") ui.from = ui.view;
+    if (ui.view === "security" && !ui.security) loadSecurity();
+    if (ui.view === "keys" && !ui.keys) loadKeys();
     var out = Portal.page(data, ui);
     side.innerHTML = out.side;
     side.hidden = !out.side;
     side.classList.toggle("collapsed", !!ui.navCollapsed);
     app.innerHTML = out.main;
     document.title = (TITLES[ui.view] || "Order " + ui.view.slice(6)) + " · Ledger";
+  }
+  // A 401 from the auth app means the in-memory session on that server is
+  // gone (a restart, most likely) -- the saved passkeyAccountId still
+  // works, so this sends the owner back to onboarding step 0 where "Use
+  // passkey" signs them straight back in (no new registration needed).
+  function requireFreshSession() {
+    ui.onboarded = false;
+    ui.onboard = { step: 0, rules: ui.onboard.rules, passkeyAccountId: ui.onboard.passkeyAccountId };
+    set({});
+  }
+  function authed() {
+    return { headers: { authorization: "Bearer " + ui.onboard.sessionToken } };
+  }
+  function loadSecurity() {
+    ui.security = { loading: true };
+    set({});
+    fetch(AUTH_BASE + "/api/security/passkeys", authed()).then(function (r) {
+      if (r.status === 401) { requireFreshSession(); return null; }
+      return r.json();
+    }).then(function (data) {
+      if (!data) return;
+      ui.security = { passkeys: data.passkeys };
+      set({});
+    }).catch(function (err) {
+      ui.security = { error: "Couldn't load passkeys: " + (err.message || err) };
+      set({});
+    });
+  }
+  function loadKeys() {
+    ui.keys = { loading: true };
+    set({});
+    fetch(AUTH_BASE + "/api/keys", authed()).then(function (r) {
+      if (r.status === 401) { requireFreshSession(); return null; }
+      return r.json();
+    }).then(function (data) {
+      if (!data) return;
+      ui.keys = { keys: data.keys };
+      set({});
+    }).catch(function (err) {
+      ui.keys = { error: "Couldn't load API keys: " + (err.message || err) };
+      set({});
+    });
   }
   function confirmOpen(p) {
     set(p);
@@ -540,7 +644,7 @@ if (typeof document !== "undefined") (function () {
     try {
       localStorage.setItem(KEY, JSON.stringify({ state: ui.state, dismissed: ui.dismissed, ran: ui.ran,
         navCollapsed: !!ui.navCollapsed, onboarded: ui.onboarded, rules: ui.onboard.rules,
-        passkeyAccountId: ui.onboard.passkeyAccountId }));
+        passkeyAccountId: ui.onboard.passkeyAccountId, sessionToken: ui.onboard.sessionToken }));
     } catch (e) { /* ignore */ }
     render();
   }
@@ -649,12 +753,14 @@ if (typeof document !== "undefined") (function () {
         return fetch(AUTH_BASE + "/api/signup/complete", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ registration_id: b.registration_id, credential: cred.toJSON() }),
+          body: JSON.stringify({ registration_id: b.registration_id, credential: cred.toJSON(),
+            attachment: cred.authenticatorAttachment || null }),
         }).then(function (r) { return r.json(); });
       });
     }).then(function (result) {
       if (!result.session_token) throw new Error(result.detail || "no session returned");
       o.passkeyAccountId = result.account_id;
+      o.sessionToken = result.session_token;
       o.signingIn = false;
       o.step = (o.step || 0) + 1;
       o.copied = null;
@@ -665,6 +771,122 @@ if (typeof document !== "undefined") (function () {
       o.authError = "Couldn't sign in with your passkey: " + ((err && err.message) || err);
       set({});
     });
+  }
+  function addPasskey() {
+    ui.security = Object.assign({}, ui.security, { adding: true, error: null });
+    set({});
+    var nameEl = document.getElementById("new-passkey-name");
+    var name = nameEl ? nameEl.value.trim() : "";
+    fetch(AUTH_BASE + "/api/security/passkeys/begin", Object.assign({ method: "POST" }, authed()))
+      .then(function (r) { return r.status === 401 ? (requireFreshSession(), null) : r.json(); })
+      .then(function (begin) {
+        if (!begin) return null;
+        var options = PublicKeyCredential.parseCreationOptionsFromJSON(begin.options.publicKey);
+        return navigator.credentials.create({ publicKey: options }).then(function (cred) {
+          return fetch(AUTH_BASE + "/api/security/passkeys/complete", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              add_id: begin.add_id, credential: cred.toJSON(), name: name || null,
+              attachment: cred.authenticatorAttachment || null,
+            }),
+          }).then(function (r) { return r.json(); });
+        });
+      })
+      .then(function (result) {
+        if (!result) return;
+        if (!result.ok) throw new Error(result.detail || JSON.stringify(result));
+        ui.security = null;
+        loadSecurity();
+      })
+      .catch(function (err) {
+        ui.security = Object.assign({}, ui.security, {
+          adding: false, error: "Couldn't add passkey: " + ((err && err.message) || err),
+        });
+        set({});
+      });
+  }
+  function renamePasskeyStart(id) {
+    ui.security = Object.assign({}, ui.security, { renaming: id });
+    set({});
+  }
+  function savePasskeyRename(id) {
+    var input = app.querySelector('[data-rename-input="' + id + '"]');
+    var name = input ? input.value.trim() : "";
+    if (!name) return;
+    fetch(AUTH_BASE + "/api/security/passkeys/" + id + "/rename", {
+      method: "POST", headers: Object.assign({ "content-type": "application/json" }, authed().headers),
+      body: JSON.stringify({ name: name }),
+    })
+      .then(function (r) { return r.status === 401 ? (requireFreshSession(), null) : r.json(); })
+      .then(function (result) {
+        if (!result) return;
+        if (!result.ok) throw new Error(result.detail);
+        ui.security = null;
+        loadSecurity();
+      })
+      .catch(function (err) {
+        ui.security = Object.assign({}, ui.security, {
+          renaming: null, error: "Couldn't rename passkey: " + ((err && err.message) || err),
+        });
+        set({});
+      });
+  }
+  function removePasskey(id) {
+    fetch(AUTH_BASE + "/api/security/passkeys/" + id + "/remove", Object.assign({ method: "POST" }, authed()))
+      .then(function (r) { return r.status === 401 ? (requireFreshSession(), null) : r.json(); })
+      .then(function (result) {
+        if (!result) return;
+        if (!result.ok) throw new Error(result.detail);
+        ui.security = null;
+        loadSecurity();
+      })
+      .catch(function (err) {
+        ui.security = Object.assign({}, ui.security, {
+          error: "Couldn't remove passkey: " + ((err && err.message) || err),
+        });
+        set({});
+      });
+  }
+  function createKey() {
+    ui.keys = Object.assign({}, ui.keys, { creating: true, error: null });
+    set({});
+    var nameEl = document.getElementById("new-key-name");
+    var name = nameEl ? nameEl.value.trim() : "";
+    fetch(AUTH_BASE + "/api/keys", {
+      method: "POST", headers: Object.assign({ "content-type": "application/json" }, authed().headers),
+      body: JSON.stringify({ name: name || null }),
+    })
+      .then(function (r) { return r.status === 401 ? (requireFreshSession(), null) : r.json(); })
+      .then(function (result) {
+        if (!result) return null;
+        if (!result.key) throw new Error(result.detail || JSON.stringify(result));
+        return fetch(AUTH_BASE + "/api/keys", authed()).then(function (r) { return r.json(); })
+          .then(function (listData) {
+            ui.keys = { keys: listData.keys, newKey: result.key };
+            set({});
+          });
+      })
+      .catch(function (err) {
+        ui.keys = Object.assign({}, ui.keys, {
+          creating: false, error: "Couldn't create key: " + ((err && err.message) || err),
+        });
+        set({});
+      });
+  }
+  function revokeKey(id) {
+    fetch(AUTH_BASE + "/api/keys/" + id + "/revoke", Object.assign({ method: "POST" }, authed()))
+      .then(function (r) { return r.status === 401 ? (requireFreshSession(), null) : r.json(); })
+      .then(function (result) {
+        if (!result) return;
+        if (!result.ok) throw new Error(result.detail);
+        ui.keys = null;
+        loadKeys();
+      })
+      .catch(function (err) {
+        ui.keys = Object.assign({}, ui.keys, { error: "Couldn't revoke key: " + ((err && err.message) || err) });
+        set({});
+      });
   }
   function onboardClick(t) {
     var o = ui.onboard, step = o.step || 0, act = t.getAttribute("data-onb");
@@ -710,6 +932,18 @@ if (typeof document !== "undefined") (function () {
   document.addEventListener("click", function (e) {
     var ob = e.target.closest("[data-onb],[data-copy]");
     if (ob) return onboardClick(ob);
+    var pk = e.target.closest(
+      "#add-passkey,[data-rename],[data-save-rename],[data-remove-passkey],#create-key,[data-revoke-key]"
+    );
+    if (pk) {
+      if (pk.id === "add-passkey") return addPasskey();
+      if (pk.id === "create-key") return createKey();
+      if (pk.hasAttribute("data-rename")) return renamePasskeyStart(pk.getAttribute("data-rename"));
+      if (pk.hasAttribute("data-save-rename")) return savePasskeyRename(pk.getAttribute("data-save-rename"));
+      if (pk.hasAttribute("data-remove-passkey")) return removePasskey(pk.getAttribute("data-remove-passkey"));
+      if (pk.hasAttribute("data-revoke-key")) return revokeKey(pk.getAttribute("data-revoke-key"));
+      return;
+    }
     var t = e.target.closest("[data-filter],[data-feedview],[data-action],[data-act]");
     if (!t) return;
     if (t.hasAttribute("data-filter")) return set({ filter: t.getAttribute("data-filter") });

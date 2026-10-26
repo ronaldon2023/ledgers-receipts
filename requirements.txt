@@ -5,3 +5,7 @@ presidio-analyzer
 presidio-anonymizer
 pytest
 ruff
+fido2
+fastapi
+uvicorn
+httpx

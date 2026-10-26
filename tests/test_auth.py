@@ -1,0 +1,336 @@
+"""End-to-end tests for auth/web.py's signup, passkey-only sign-in, and
+security (passkey management) pages, driven through a real FastAPI
+TestClient against a real Fido2Server -- only the "browser" side
+(navigator.credentials.create/get) is replaced, by
+scripts.soft_authenticator.SoftAuthenticator, so every cryptographic step
+the real pages rely on actually runs."""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from auth import shared
+from auth.web import build_auth_app
+from scripts.soft_authenticator import SoftAuthenticator
+
+
+@pytest.fixture(autouse=True)
+def _isolated_stores(tmp_path, monkeypatch):
+    """Point the shared singletons at a fresh on-disk store per test, and
+    clear auth/web.py's in-memory ceremony/session state -- both are
+    process-global, so without this tests would see each other's accounts
+    and passkeys."""
+    shared.accounts.path = tmp_path / "accounts.json"
+    shared.auth.store.path = tmp_path / "credentials.json"
+    shared.api_keys.path = tmp_path / "api_keys.json"
+
+    import auth.web as web_module
+
+    monkeypatch.setattr(web_module, "_pending_registrations", {})
+    monkeypatch.setattr(web_module, "_pending_logins", {})
+    monkeypatch.setattr(web_module, "_pending_added_passkeys", {})
+    monkeypatch.setattr(web_module, "_sessions", {})
+
+
+@pytest.fixture
+def client():
+    return TestClient(build_auth_app())
+
+
+def _authenticator() -> SoftAuthenticator:
+    return SoftAuthenticator(rp_id=shared.RP_ID, origin=shared.ORIGIN)
+
+
+def _signup(client: TestClient, authenticator: SoftAuthenticator, display_name="Sweet Rose Bakery"):
+    begin = client.post("/api/signup/begin", json={"display_name": display_name}).json()
+    credential = authenticator.register_json(begin["options"]["publicKey"])
+    complete = client.post(
+        "/api/signup/complete",
+        json={"registration_id": begin["registration_id"], "credential": credential},
+    ).json()
+    return complete
+
+
+def _login(client: TestClient, authenticator: SoftAuthenticator):
+    begin = client.post("/api/login/begin").json()
+    credential = authenticator.authenticate_json(begin["options"]["publicKey"])
+    complete = client.post(
+        "/api/login/complete", json={"login_id": begin["login_id"], "credential": credential}
+    ).json()
+    return complete
+
+
+def test_pages_render(client):
+    for path in ("/", "/login", "/security"):
+        assert client.get(path).status_code == 200
+
+
+def test_signup_creates_account_and_session(client):
+    complete = _signup(client, _authenticator())
+
+    assert complete["display_name"] == "Sweet Rose Bakery"
+    assert complete["session_token"]
+    assert shared.accounts.by_id(complete["account_id"]) is not None
+    assert len(shared.auth.store.for_account(complete["account_id"])) == 1
+
+
+def test_login_with_registered_passkey(client):
+    authenticator = _authenticator()
+    signup = _signup(client, authenticator)
+
+    login = _login(client, authenticator)
+
+    assert login["account_id"] == signup["account_id"]
+    assert login["session_token"]
+    assert login["session_token"] != signup["session_token"]
+
+
+def test_login_with_unregistered_passkey_is_rejected(client):
+    _signup(client, _authenticator())
+    stranger = _authenticator()
+
+    begin = client.post("/api/login/begin").json()
+    credential = stranger.authenticate_json(begin["options"]["publicKey"])
+    response = client.post(
+        "/api/login/complete", json={"login_id": begin["login_id"], "credential": credential}
+    )
+
+    assert response.status_code == 400
+
+
+def test_security_page_requires_session(client):
+    response = client.get("/api/security/passkeys")
+    assert response.status_code == 401
+
+
+def test_security_lists_the_passkey_from_signup(client):
+    signup = _signup(client, _authenticator())
+
+    response = client.get(
+        "/api/security/passkeys", headers={"authorization": f"Bearer {signup['session_token']}"}
+    )
+
+    passkeys = response.json()["passkeys"]
+    assert len(passkeys) == 1
+    assert passkeys[0]["name"] == "Passkey 1"
+
+
+def test_can_add_a_second_passkey(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+    second = _authenticator()
+
+    begin = client.post("/api/security/passkeys/begin", headers=headers).json()
+    credential = second.register_json(begin["options"]["publicKey"])
+    added = client.post(
+        "/api/security/passkeys/complete",
+        json={"add_id": begin["add_id"], "credential": credential, "name": "Work laptop"},
+    ).json()
+
+    assert added["ok"] is True
+    passkeys = client.get("/api/security/passkeys", headers=headers).json()["passkeys"]
+    assert {p["name"] for p in passkeys} == {"Passkey 1", "Work laptop"}
+
+    # The newly added passkey also signs in as the same account.
+    login = _login(client, second)
+    assert login["account_id"] == signup["account_id"]
+
+
+def test_can_remove_a_passkey_but_not_the_last_one(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+    second = _authenticator()
+    begin = client.post("/api/security/passkeys/begin", headers=headers).json()
+    client.post(
+        "/api/security/passkeys/complete",
+        json={
+            "add_id": begin["add_id"],
+            "credential": second.register_json(begin["options"]["publicKey"]),
+        },
+    )
+
+    passkeys = client.get("/api/security/passkeys", headers=headers).json()["passkeys"]
+    assert len(passkeys) == 2
+    first_id = passkeys[0]["credential_id"]
+
+    removed = client.post(f"/api/security/passkeys/{first_id}/remove", headers=headers)
+    assert removed.status_code == 200
+
+    remaining = client.get("/api/security/passkeys", headers=headers).json()["passkeys"]
+    assert len(remaining) == 1
+    last_id = remaining[0]["credential_id"]
+
+    blocked = client.post(f"/api/security/passkeys/{last_id}/remove", headers=headers)
+    assert blocked.status_code == 400
+
+
+def test_sessions_and_passkeys_are_isolated_per_account(client):
+    alice = _signup(client, _authenticator(), display_name="Alice's Bakery")
+    bob = _signup(client, _authenticator(), display_name="Bob's Bakery")
+
+    alice_passkeys = client.get(
+        "/api/security/passkeys", headers={"authorization": f"Bearer {alice['session_token']}"}
+    ).json()["passkeys"]
+    bob_passkeys = client.get(
+        "/api/security/passkeys", headers={"authorization": f"Bearer {bob['session_token']}"}
+    ).json()["passkeys"]
+
+    assert len(alice_passkeys) == 1
+    assert len(bob_passkeys) == 1
+    assert alice_passkeys[0]["credential_id"] != bob_passkeys[0]["credential_id"]
+
+
+def test_can_rename_a_passkey(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+    passkey_id = client.get("/api/security/passkeys", headers=headers).json()["passkeys"][0][
+        "credential_id"
+    ]
+
+    renamed = client.post(
+        f"/api/security/passkeys/{passkey_id}/rename", json={"name": "Work laptop"}, headers=headers
+    )
+    assert renamed.status_code == 200
+
+    passkeys = client.get("/api/security/passkeys", headers=headers).json()["passkeys"]
+    assert passkeys[0]["name"] == "Work laptop"
+
+
+def test_rename_rejects_an_empty_name_and_an_unknown_passkey(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+    passkey_id = client.get("/api/security/passkeys", headers=headers).json()["passkeys"][0][
+        "credential_id"
+    ]
+
+    empty = client.post(
+        f"/api/security/passkeys/{passkey_id}/rename", json={"name": "   "}, headers=headers
+    )
+    assert empty.status_code == 400
+
+    unknown = client.post(
+        "/api/security/passkeys/does-not-exist/rename", json={"name": "New name"}, headers=headers
+    )
+    assert unknown.status_code == 404
+
+
+def test_login_rejects_a_foreign_passkey_with_an_undecodable_handle(client):
+    """A passkey the browser's own account picker offered for rp_id
+    "localhost" but that Ledger never registered -- its user_handle isn't
+    even valid UTF-8. This must fail cleanly (400), not crash the server
+    (the real bug this regression-tests: see auth/webauthn.py's
+    account_id_from_discoverable_response)."""
+    from fido2.utils import websafe_encode
+
+    _signup(client, _authenticator())
+    foreign = _authenticator()
+    begin = client.post("/api/login/begin").json()
+    credential = foreign.authenticate_json(begin["options"]["publicKey"])
+    credential["response"]["userHandle"] = websafe_encode(b"\x83\xff\xfe")
+
+    response = client.post(
+        "/api/login/complete", json={"login_id": begin["login_id"], "credential": credential}
+    )
+    assert response.status_code == 400
+
+
+def test_keys_page_renders(client):
+    assert client.get("/keys").status_code == 200
+
+
+def test_create_list_and_revoke_an_api_key(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+
+    created = client.post("/api/keys", json={"name": "BakeSupply MCP server"}, headers=headers)
+    assert created.status_code == 200
+    body = created.json()
+    assert body["key"].startswith("ledger_")
+    assert body["prefix"] == body["key"][:8]
+
+    keys = client.get("/api/keys", headers=headers).json()["keys"]
+    assert len(keys) == 1
+    assert keys[0]["name"] == "BakeSupply MCP server"
+    assert keys[0]["revoked"] is False
+    assert "key" not in keys[0]  # the raw key is never shown again
+
+    revoked = client.post(f"/api/keys/{keys[0]['key_id']}/revoke", headers=headers)
+    assert revoked.status_code == 200
+    keys = client.get("/api/keys", headers=headers).json()["keys"]
+    assert keys[0]["revoked"] is True
+
+
+def test_api_keys_require_a_session_and_are_isolated_per_account(client):
+    assert client.get("/api/keys").status_code == 401
+
+    alice = _signup(client, _authenticator(), display_name="Alice's Bakery")
+    bob = _signup(client, _authenticator(), display_name="Bob's Bakery")
+    client.post("/api/keys", json={}, headers={"authorization": f"Bearer {alice['session_token']}"})
+
+    bob_keys = client.get(
+        "/api/keys", headers={"authorization": f"Bearer {bob['session_token']}"}
+    ).json()["keys"]
+    assert bob_keys == []
+
+
+def test_revoking_an_unknown_or_already_revoked_key_fails_cleanly(client):
+    signup = _signup(client, _authenticator())
+    headers = {"authorization": f"Bearer {signup['session_token']}"}
+
+    assert client.post("/api/keys/does-not-exist/revoke", headers=headers).status_code == 404
+
+    created = client.post("/api/keys", json={}, headers=headers).json()
+    client.post(f"/api/keys/{created['key_id']}/revoke", headers=headers)
+    twice = client.post(f"/api/keys/{created['key_id']}/revoke", headers=headers)
+    assert twice.status_code == 404
+
+
+def test_api_key_store_find_active_round_trips_and_ignores_revoked(tmp_path):
+    from auth.api_keys import ApiKeyStore
+
+    store = ApiKeyStore(path=tmp_path / "keys.json")
+    key, raw = store.create("acct-1", name="Test key")
+
+    found = store.find_active(raw)
+    assert found is not None
+    assert found.key_id == key.key_id
+    assert found.last_used_at is not None  # find_active records use
+
+    assert store.find_active("ledger_not-a-real-key") is None
+
+    store.revoke("acct-1", key.key_id)
+    assert store.find_active(raw) is None
+
+
+def test_credential_store_tolerates_records_from_an_older_schema(tmp_path):
+    """Regression test: a logs/credentials.json written before `name`,
+    `created_at`, `last_used_at`, and `attachment` existed must still load
+    -- it previously crashed every signup/login on the account (TypeError:
+    missing required positional arguments)."""
+    import json
+
+    from auth.webauthn import CredentialStore
+
+    path = tmp_path / "credentials.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "account_id": "acct-old",
+                    "credential_id_b64": "abc123",
+                    "raw_hex": "00",
+                    "sign_count": 3,
+                }
+            ]
+        )
+    )
+    store = CredentialStore(path=path)
+
+    loaded = store.for_account("acct-old")
+
+    assert len(loaded) == 1
+    assert loaded[0].sign_count == 3
+    assert loaded[0].name  # defaulted, not missing
+    assert loaded[0].attachment is None
+    assert loaded[0].device_label() == "Unknown device"

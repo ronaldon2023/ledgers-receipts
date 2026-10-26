@@ -714,16 +714,111 @@ def test_order_page_details_from_review() -> None:
 
 
 @needs_node
-def test_passkey_only_on_onboarding_sign_in() -> None:
+def test_passkey_signin_copy_only_appears_on_the_sign_in_step() -> None:
+    # The "Passkeys" nav link (and its settings page) are legitimately on
+    # every page -- only the sign-in call-to-action copy is step-0-only.
     for state in STATES:
         for view in ["dashboard", "activities", "policies", "order/PO-2041"]:
-            assert "passkey" not in page(data(state), view).lower(), (state, view)
+            assert "sign in with your passkey" not in page(data(state), view).lower(), (
+                state,
+                view,
+            )
     assert "Sign in with your passkey" in onboarding(0)["main"]
     for step in (1, 2, 3):
-        assert "passkey" not in onboarding(step)["main"].lower()
+        assert "sign in with your passkey" not in onboarding(step)["main"].lower()
     html = page(data("pending"), confirming={"card": "att_approve", "action": 0})
     assert "<strong>Approve this payment?</strong>" in html
     assert 'data-act="confirm" data-card="att_approve">Approve</button>' in html
+
+
+@needs_node
+def test_passkeys_and_api_keys_nav_links_appear_on_every_page() -> None:
+    # Onboarding itself has no sidebar at all (see
+    # test_onboarding_steps_render_without_sidebar_links), so these two new
+    # links only need checking on the pages that do have one.
+    for view in ["dashboard", "activities", "policies", "security", "keys"]:
+        html = page(data("pending"), view)
+        assert '<a href="#security"' in html
+        assert '<a href="#keys"' in html
+
+
+@needs_node
+def test_security_view_renders_live_passkey_state() -> None:
+    ui = {
+        "view": "security",
+        "security": {
+            "passkeys": [
+                {
+                    "credential_id": "abc",
+                    "name": "Passkey 1",
+                    "device": "This device",
+                    "created_at": "2026-10-25T10:00:00Z",
+                    "last_used_at": None,
+                }
+            ]
+        },
+    }
+    out = run([{"data": data("pending"), "ui": ui}])[0]
+
+    assert "Passkey 1" in out["main"]
+    assert "This device" in out["main"]
+    assert "never" in out["main"]
+    assert 'data-rename="abc"' in out["main"]
+    assert 'data-remove-passkey="abc"' in out["main"]
+
+
+@needs_node
+def test_security_view_empty_state_and_escapes_errors() -> None:
+    empty = run(
+        [{"data": data("pending"), "ui": {"view": "security", "security": {"passkeys": []}}}]
+    )[0]
+    assert "No passkeys yet." in empty["main"]
+
+    erred = run(
+        [{"data": data("pending"), "ui": {"view": "security", "security": {"error": XSS}}}]
+    )[0]
+    assert "&lt;script&gt;" in erred["main"]
+    assert "<script>" not in erred["main"]
+
+
+@needs_node
+def test_keys_view_renders_live_state_and_shows_a_new_key_once() -> None:
+    ui = {
+        "view": "keys",
+        "keys": {
+            "keys": [
+                {
+                    "key_id": "k1",
+                    "name": "BakeSupply",
+                    "prefix": "ledger_a",
+                    "created_at": "2026-10-25T10:00:00Z",
+                    "last_used_at": "2026-10-25T11:00:00Z",
+                    "revoked": False,
+                },
+                {
+                    "key_id": "k2",
+                    "name": "Old key",
+                    "prefix": "ledger_z",
+                    "created_at": "2026-10-20T10:00:00Z",
+                    "last_used_at": None,
+                    "revoked": True,
+                },
+            ],
+            "newKey": "ledger_abcdef123456",
+        },
+    }
+    out = run([{"data": data("pending"), "ui": ui}])[0]
+
+    assert "BakeSupply" in out["main"]
+    assert 'data-revoke-key="k1"' in out["main"]
+    assert "Revoked" in out["main"]
+    assert "ledger_abcdef123456" in out["main"]
+
+
+@needs_node
+def test_keys_view_empty_state() -> None:
+    empty = run([{"data": data("pending"), "ui": {"view": "keys", "keys": {"keys": []}}}])[0]
+    assert "No API keys yet." in empty["main"]
 
 
 @needs_node
@@ -749,9 +844,17 @@ def test_cleaned_up_glance_tiles_and_activities_bar() -> None:
 def test_sidebar_is_collapsible() -> None:
     side = run([{"data": data("pending"), "ui": {"view": "dashboard", "filter": "all"}}])[0]["side"]
     assert 'data-act="nav" aria-expanded="true" aria-label="Collapse sidebar"' in side
-    for label in ["Dashboard", "Activities", "Policies", "Start onboarding", "Restart demo"]:
+    for label in [
+        "Dashboard",
+        "Activities",
+        "Policies",
+        "Passkeys",
+        "API keys",
+        "Start onboarding",
+        "Restart demo",
+    ]:
         assert f'title="{label}"' in side and f'<span class="lbl">{label}</span>' in side
-    assert side.count('<svg class="ico"') == 6  # five items plus the toggle
+    assert side.count('<svg class="ico"') == 8  # seven items plus the toggle
     folded = run([{"data": data("pending"), "ui": {"view": "dashboard", "navCollapsed": True}}])[0]
     assert 'aria-expanded="false" aria-label="Expand sidebar"' in folded["side"]
 

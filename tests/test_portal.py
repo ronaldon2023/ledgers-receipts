@@ -656,15 +656,16 @@ def test_summary_card_names_the_unpaid_bills() -> None:
 
 
 @needs_node
-def test_default_dashboard_shows_only_bill_07() -> None:
-    # pending is the default state: Claude has only reached BILL-07 so far.
+@pytest.mark.parametrize("state", ["pending", "paid"])
+def test_bill_07_flow_shows_only_bill_07(state: str) -> None:
+    # pending (the default) and paid (after Approve) are BILL-07's happy flow.
     for view in ["dashboard", "activities"]:
-        html = page(data("pending"), view, **CHECKED)
+        html = page(data(state), view, **CHECKED)
         for hidden in ["BILL-08", "BILL-09", "PO-2038", "PO-2039"]:
             assert hidden not in html, (view, hidden)
         assert "BILL-07" in html
-    for state in ["stopped", "paid", "declined"]:
-        assert "BILL-08" in page(data(state)), state
+    for other in ["stopped", "declined"]:
+        assert "BILL-08" in page(data(other)), other
 
 
 @needs_node
@@ -675,8 +676,7 @@ def test_approving_bill_07_ends_in_success() -> None:
     html = page(data("paid"))
     attn = html[html.index("Needs your attention") :]
     assert "Paid $800.00 to Flour Co for BILL-07" in attn
-    assert "was not sent" not in attn.split("BILL-08")[0]  # success comes before the stop card
-    assert "BILL-09 was not sent" not in attn
+    assert "was not sent" not in attn  # approving BILL-07 ends in success, nothing stopped
     assert 'class="card mismatch"' not in html and "Doesn&#39;t match" not in html
 
 

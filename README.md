@@ -1,5 +1,7 @@
 # Receipts
 
+> **Hackathon prototype.** This is the version The Ledgers built at the Claude Impact Lab Hackathon. The maintained version, with a QuickBooks Online integration and automated tests, is at [ronaldon2023/receipts-claudesmb](https://github.com/ronaldon2023/receipts-claudesmb).
+
 Receipts makes an AI agent's work auditable. Every tool call is logged into a
 tamper-evident hash chain, a guard blocks risky actions before they run, and
 plain code checks the log against the real records. The AI does the work, code
